@@ -110,6 +110,25 @@ export function deleteProject(id: string): void {
   }
 }
 
+/** Remove a project from the library index without deleting its data from localStorage. */
+export function removeFromIndex(id: string): void {
+  try {
+    const entries = listProjects().filter(e => e.id !== id);
+    saveIndex(entries);
+  } catch (err) {
+    console.error('Failed to remove from index:', err);
+  }
+}
+
+/** Clear the entire project library index. Project data remains in localStorage. */
+export function clearProjectIndex(): void {
+  try {
+    saveIndex([]);
+  } catch (err) {
+    console.error('Failed to clear project index:', err);
+  }
+}
+
 // ============================================================================
 // JSON File Export/Import
 // ============================================================================

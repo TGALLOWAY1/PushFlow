@@ -611,22 +611,30 @@ function collectTopologyRejections(
 }
 
 /**
- * Creates a fallback grip by assigning fingers by proximity.
- * Ignores biomechanical constraints.
+ * Creates a fallback grip by assigning fingers in anatomical order.
+ * Ignores biomechanical span/topology constraints but respects
+ * the natural left-to-right finger arrangement on each hand.
+ *
+ * Anatomy (L→R on the grid):
+ *   Left hand:  pinky, ring, middle, index, thumb
+ *   Right hand: thumb, index, middle, ring, pinky
  */
 function createFallbackGrip(
   activePads: PadCoord[],
   hand: HandSide
 ): HandPose {
-  const sortedPads = [...activePads].sort((a, b) =>
-    hand === 'left' ? a.col - b.col : b.col - a.col
-  );
+  // Always sort pads left-to-right (ascending col), break ties by row
+  const sortedPads = [...activePads].sort((a, b) => a.col - b.col || a.row - b.row);
 
-  const fingerPriority: FingerType[] = ['index', 'middle', 'ring', 'thumb', 'pinky'];
+  // Anatomical finger order left-to-right on the grid
+  const fingerOrder: FingerType[] = hand === 'left'
+    ? ['pinky', 'ring', 'middle', 'index', 'thumb']
+    : ['thumb', 'index', 'middle', 'ring', 'pinky'];
+
   const fingers: Partial<Record<FingerType, FingerCoordinate>> = {};
 
-  for (let i = 0; i < sortedPads.length && i < fingerPriority.length; i++) {
-    fingers[fingerPriority[i]] = padToFingerCoordinate(sortedPads[i]);
+  for (let i = 0; i < sortedPads.length && i < fingerOrder.length; i++) {
+    fingers[fingerOrder[i]] = padToFingerCoordinate(sortedPads[i]);
   }
 
   return { centroid: calculateCentroid(fingers), fingers };

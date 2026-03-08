@@ -242,4 +242,55 @@ describe('Atomic Feasibility Constraints', () => {
       }
     });
   });
+
+  // ========================================================================
+  // Fallback Grip Topology
+  // ========================================================================
+  describe('Fallback Grip Topology', () => {
+    it('right hand: thumb should be leftmost, pinky rightmost', () => {
+      // 5 pads spanning cols 0–7 forces Tier 3 fallback (distance 7 > all span limits)
+      const pads = [
+        { row: 3, col: 0 },
+        { row: 3, col: 2 },
+        { row: 3, col: 4 },
+        { row: 3, col: 5 },
+        { row: 3, col: 7 },
+      ];
+      const gripResults = generateValidGripsWithTier(pads, 'right');
+      expect(gripResults.length).toBeGreaterThan(0);
+
+      // Should be fallback tier given the extreme spread
+      const fallbackGrips = gripResults.filter(g => g.tier === 'fallback');
+      expect(fallbackGrips.length).toBeGreaterThan(0);
+
+      const grip = fallbackGrips[0].pose;
+      // Right hand L→R: thumb(col 0) < index(col 2) < middle(col 4) < ring(col 5) < pinky(col 7)
+      expect(grip.fingers.thumb!.x).toBeLessThan(grip.fingers.index!.x);
+      expect(grip.fingers.index!.x).toBeLessThan(grip.fingers.middle!.x);
+      expect(grip.fingers.middle!.x).toBeLessThan(grip.fingers.ring!.x);
+      expect(grip.fingers.ring!.x).toBeLessThan(grip.fingers.pinky!.x);
+    });
+
+    it('left hand: pinky should be leftmost, thumb rightmost', () => {
+      const pads = [
+        { row: 3, col: 0 },
+        { row: 3, col: 2 },
+        { row: 3, col: 4 },
+        { row: 3, col: 5 },
+        { row: 3, col: 7 },
+      ];
+      const gripResults = generateValidGripsWithTier(pads, 'left');
+      expect(gripResults.length).toBeGreaterThan(0);
+
+      const fallbackGrips = gripResults.filter(g => g.tier === 'fallback');
+      expect(fallbackGrips.length).toBeGreaterThan(0);
+
+      const grip = fallbackGrips[0].pose;
+      // Left hand L→R: pinky(col 0) < ring(col 2) < middle(col 4) < index(col 5) < thumb(col 7)
+      expect(grip.fingers.pinky!.x).toBeLessThan(grip.fingers.ring!.x);
+      expect(grip.fingers.ring!.x).toBeLessThan(grip.fingers.middle!.x);
+      expect(grip.fingers.middle!.x).toBeLessThan(grip.fingers.index!.x);
+      expect(grip.fingers.index!.x).toBeLessThan(grip.fingers.thumb!.x);
+    });
+  });
 });

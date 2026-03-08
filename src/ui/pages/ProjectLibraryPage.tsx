@@ -9,7 +9,7 @@
 import { useState, useCallback, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { type ProjectState, type SoundStream, type SoundEvent, createEmptyProjectState } from '../state/projectState';
-import { listProjects, saveProject, deleteProject, importProjectFromFile, type ProjectLibraryEntry } from '../persistence/projectStorage';
+import { listProjects, saveProject, deleteProject, removeFromIndex, clearProjectIndex, importProjectFromFile, type ProjectLibraryEntry } from '../persistence/projectStorage';
 import { getDemoProjects, createDemoCopy } from '../fixtures/demoProjects';
 import { parseMidiFileToProject } from '../../import/midiImport';
 import { analyzePerformance } from '../../engine/structure/performanceAnalyzer';
@@ -48,8 +48,25 @@ export function ProjectLibraryPage() {
   const [pendingImport, setPendingImport] = useState<PendingImport | null>(null);
   const [dragOver, setDragOver] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [expandedGroups, setExpandedGroups] = useState<Set<string>>(new Set(['generic']));
 
   const demoProjects = useMemo(() => getDemoProjects(), []);
+
+  const demoGroups = useMemo(() => {
+    const generic: ProjectState[] = [];
+    const atomicTests: ProjectState[] = [];
+    const temporalTests: ProjectState[] = [];
+    for (const demo of demoProjects) {
+      if (demo.id.startsWith('feasibility-a')) atomicTests.push(demo);
+      else if (demo.id.startsWith('feasibility-f')) temporalTests.push(demo);
+      else generic.push(demo);
+    }
+    return [
+      { key: 'generic', label: 'Basic Demos', demos: generic },
+      { key: 'atomic', label: 'A1–A8: Atomic Constraints', demos: atomicTests },
+      { key: 'temporal', label: 'F1–F6: Temporal Sequences', demos: temporalTests },
+    ];
+  }, [demoProjects]);
 
   // ---- MIDI Import ----
 
@@ -191,6 +208,25 @@ export function ProjectLibraryPage() {
   const handleDeleteProject = useCallback((id: string) => {
     deleteProject(id);
     setSavedProjects(listProjects());
+  }, []);
+
+  const toggleGroup = useCallback((key: string) => {
+    setExpandedGroups(prev => {
+      const next = new Set(prev);
+      if (next.has(key)) next.delete(key);
+      else next.add(key);
+      return next;
+    });
+  }, []);
+
+  const handleRemoveFromHistory = useCallback((id: string) => {
+    removeFromIndex(id);
+    setSavedProjects(listProjects());
+  }, []);
+
+  const handleClearHistory = useCallback(() => {
+    clearProjectIndex();
+    setSavedProjects([]);
   }, []);
 
   const handleImportJSON = useCallback(async (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -335,33 +371,55 @@ export function ProjectLibraryPage() {
       )}
 
       {/* Demo Projects */}
-      <div className="space-y-2">
+      <div className="space-y-4">
         <h2 className="text-sm font-medium text-gray-400">Demo Projects</h2>
-        <div className="grid grid-cols-2 gap-2">
-          {demoProjects.map(demo => (
+        {demoGroups.map(group => (
+          <div key={group.key} className="space-y-2">
             <button
-              key={demo.id}
-              className="p-3 rounded-lg bg-gray-800/50 border border-gray-700 hover:border-gray-500 text-left transition-colors"
-              onClick={() => handleOpenDemo(demo)}
+              className="flex items-center gap-2 w-full text-left text-sm text-gray-400 hover:text-gray-300 transition-colors"
+              onClick={() => toggleGroup(group.key)}
             >
-              <div className="flex items-center gap-2 mb-1">
-                <span className="text-sm font-medium text-gray-200">{demo.name}</span>
-                <span className="text-[9px] px-1.5 py-0.5 rounded bg-purple-500/20 text-purple-400 font-medium">
-                  DEMO
-                </span>
-              </div>
-              <div className="text-[11px] text-gray-500">
-                {demo.soundStreams.length} sounds — {demo.soundStreams.map(s => s.name).join(', ')}
-              </div>
+              <span className="text-[10px] w-3">{expandedGroups.has(group.key) ? '\u25BC' : '\u25B6'}</span>
+              <span className="font-medium">{group.label}</span>
+              <span className="text-[10px] text-gray-600">({group.demos.length})</span>
             </button>
-          ))}
-        </div>
+            {expandedGroups.has(group.key) && (
+              <div className="grid grid-cols-2 gap-2">
+                {group.demos.map(demo => (
+                  <button
+                    key={demo.id}
+                    className="p-3 rounded-lg bg-gray-800/50 border border-gray-700 hover:border-gray-500 text-left transition-colors"
+                    onClick={() => handleOpenDemo(demo)}
+                  >
+                    <div className="flex items-center gap-2 mb-1">
+                      <span className="text-sm font-medium text-gray-200">{demo.name}</span>
+                      <span className="text-[9px] px-1.5 py-0.5 rounded bg-purple-500/20 text-purple-400 font-medium">
+                        DEMO
+                      </span>
+                    </div>
+                    <div className="text-[11px] text-gray-500">
+                      {demo.soundStreams.length} sounds — {demo.soundStreams.map(s => s.name).join(', ')}
+                    </div>
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
+        ))}
       </div>
 
       {/* Saved Projects */}
       {savedProjects.length > 0 && (
         <div className="space-y-2">
-          <h2 className="text-sm font-medium text-gray-400">Your Projects</h2>
+          <div className="flex items-center justify-between">
+            <h2 className="text-sm font-medium text-gray-400">Your Projects</h2>
+            <button
+              className="text-[11px] text-gray-600 hover:text-gray-400 transition-colors"
+              onClick={handleClearHistory}
+            >
+              Clear All
+            </button>
+          </div>
           <div className="space-y-1">
             {savedProjects.map(entry => (
               <div
@@ -396,14 +454,13 @@ export function ProjectLibraryPage() {
                     {new Date(entry.updatedAt).toLocaleDateString()}
                   </div>
                 </button>
-                {!entry.isDemo && (
-                  <button
-                    className="text-gray-600 hover:text-red-400 text-xs px-2 py-1"
-                    onClick={e => { e.stopPropagation(); handleDeleteProject(entry.id); }}
-                  >
-                    Delete
-                  </button>
-                )}
+                <button
+                  className="text-gray-600 hover:text-gray-400 text-sm px-1.5 py-0.5 transition-colors"
+                  onClick={e => { e.stopPropagation(); handleRemoveFromHistory(entry.id); }}
+                  title="Remove from history"
+                >
+                  ×
+                </button>
               </div>
             ))}
           </div>
