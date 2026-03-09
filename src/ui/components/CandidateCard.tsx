@@ -69,7 +69,7 @@ export function CandidateCard({ candidate, isSelected, rank, onClick }: Candidat
 
       {/* Quick stats */}
       <div className="flex gap-3 text-[11px] text-gray-400 mb-2">
-        <span>{executionPlan.fingerAssignments.length} events</span>
+        <span>{new Set(executionPlan.fingerAssignments.map(a => a.startTime)).size} events</span>
         <span>{executionPlan.unplayableCount} unplayable</span>
         <span>score: {executionPlan.score.toFixed(1)}</span>
         {metadata.seed !== undefined && <span>seed: {metadata.seed}</span>}

@@ -30,3 +30,6 @@ export * from './ergonomicPrior';
 
 // Engine configuration
 export * from './engineConfig';
+
+// Performance lanes
+export * from './performanceLane';

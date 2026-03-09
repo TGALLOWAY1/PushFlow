@@ -11,6 +11,8 @@ import { type EngineConfiguration } from '../../types/engineConfig';
 import { type CandidateSolution } from '../../types/candidateSolution';
 import { type Layout } from '../../types/layout';
 import { type Section, type VoiceProfile } from '../../types/performanceStructure';
+import { type PerformanceLane, type LaneGroup, type SourceFile } from '../../types/performanceLane';
+import { type LaneAction, isLaneAction, lanesReducer } from './lanesReducer';
 
 // ============================================================================
 // Sound Stream Model
@@ -70,6 +72,11 @@ export interface ProjectState {
 
   // Config
   engineConfig: EngineConfiguration;
+
+  // Performance Lanes (pre-editor authoring data)
+  performanceLanes: PerformanceLane[];
+  laneGroups: LaneGroup[];
+  sourceFiles: SourceFile[];
 
   // Ephemeral UI state (not persisted, not in undo stack)
   selectedEventIndex: number | null;
@@ -140,13 +147,14 @@ export type ProjectAction =
   | { type: 'SELECT_CANDIDATE'; payload: string | null }
   | { type: 'MARK_ANALYSIS_STALE' }
 
-  // Overrides
-
   // Ephemeral UI
   | { type: 'SELECT_EVENT'; payload: number | null }
   | { type: 'SET_COMPARE_CANDIDATE'; payload: string | null }
   | { type: 'SET_PROCESSING'; payload: boolean }
-  | { type: 'SET_ERROR'; payload: string | null };
+  | { type: 'SET_ERROR'; payload: string | null }
+
+  // Performance Lanes (delegated to lanesReducer)
+  | LaneAction;
 
 /** Actions that should NOT be recorded in the undo stack. */
 const EPHEMERAL_ACTIONS = new Set<ProjectAction['type']>([
@@ -158,6 +166,7 @@ const EPHEMERAL_ACTIONS = new Set<ProjectAction['type']>([
   'SET_ANALYSIS_RESULT',
   'SET_CANDIDATES',
   'SELECT_CANDIDATE',
+  'TOGGLE_LANE_GROUP_COLLAPSE',
 ]);
 
 export function isEphemeralAction(action: ProjectAction): boolean {
@@ -187,6 +196,11 @@ function updateActiveLayout(
 }
 
 export function projectReducer(state: ProjectState, action: ProjectAction): ProjectState {
+  // Delegate lane/group actions to the dedicated lanes reducer
+  if (isLaneAction(action.type)) {
+    return lanesReducer(state, action as LaneAction);
+  }
+
   switch (action.type) {
     case 'LOAD_PROJECT':
       return {
@@ -379,6 +393,9 @@ export function createEmptyProjectState(): ProjectState {
         right: { centroid: { x: 5.5, y: 3.5 }, fingers: {} },
       },
     },
+    performanceLanes: [],
+    laneGroups: [],
+    sourceFiles: [],
     selectedEventIndex: null,
     compareCandidateId: null,
     isProcessing: false,
