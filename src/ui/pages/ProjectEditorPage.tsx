@@ -1,10 +1,11 @@
 /**
  * ProjectEditorPage.
  *
- * Main workspace for editing a project's grid layout, viewing analysis,
- * and inspecting the timeline.
+ * Main workspace with two tabs:
+ * - Lanes: Import, organize, and preview performance lanes
+ * - Editor: Grid layout editing, analysis, and timeline
  *
- * Layout:
+ * Editor Layout:
  * ┌─────────────────────────────────────────────────┐
  * │ EditorToolbar (name, undo/redo, layout, actions) │
  * ├──────────────────────┬──────────────────────────┤
@@ -18,7 +19,7 @@
  * └─────────────────────────────────────────────────┘
  */
 
-import { useMemo } from 'react';
+import { useState, useMemo, useCallback } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { ProjectProvider, useProject } from '../state/ProjectContext';
 import { loadProject, saveProject } from '../persistence/projectStorage';
@@ -30,8 +31,11 @@ import { AnalysisSidePanel } from '../components/AnalysisSidePanel';
 import { DiagnosticsPanel } from '../components/DiagnosticsPanel';
 import { EventDetailPanel } from '../components/EventDetailPanel';
 import { TimelinePanel } from '../components/TimelinePanel';
+import { PerformanceLanesView } from '../components/lanes/PerformanceLanesView';
 import { useAutoAnalysis } from '../hooks/useAutoAnalysis';
 import { useKeyboardShortcuts } from '../hooks/useKeyboardShortcuts';
+
+type EditorTab = 'lanes' | 'editor';
 
 export function ProjectEditorPage() {
   const { id } = useParams<{ id: string }>();
@@ -58,20 +62,35 @@ export function ProjectEditorPage() {
 
   return (
     <ProjectProvider initialState={initialState}>
-      <EditorContent />
+      <ProjectContent />
     </ProjectProvider>
   );
 }
 
-function EditorContent() {
+function ProjectContent() {
   const { state, dispatch } = useProject();
   const navigate = useNavigate();
-  const { generateFull } = useAutoAnalysis();
-  useKeyboardShortcuts();
+
+  // Default to lanes tab if project has lanes, else editor
+  const [activeTab, setActiveTab] = useState<EditorTab>(
+    state.performanceLanes.length > 0 ? 'lanes' : 'editor'
+  );
+
+  const handleTabChange = useCallback((tab: EditorTab) => {
+    if (tab === 'editor' && state.performanceLanes.length > 0) {
+      // Sync lanes → streams when switching to editor
+      dispatch({ type: 'SYNC_STREAMS_FROM_LANES' });
+    }
+    if (tab === 'lanes' && state.performanceLanes.length === 0 && state.soundStreams.length > 0) {
+      // Populate lanes from existing streams (legacy import path)
+      dispatch({ type: 'POPULATE_LANES_FROM_STREAMS' });
+    }
+    setActiveTab(tab);
+  }, [state.performanceLanes.length, state.soundStreams.length, dispatch]);
 
   return (
     <div className="max-w-[1400px] mx-auto space-y-3">
-      {/* Top toolbar */}
+      {/* Top bar: Library button + Tab switcher */}
       <div className="flex items-center gap-3">
         <button
           className="px-2 py-1 text-xs rounded bg-gray-800 hover:bg-gray-700 text-gray-400"
@@ -83,8 +102,35 @@ function EditorContent() {
         >
           &larr; Library
         </button>
-        <div className="flex-1">
-          <EditorToolbar />
+
+        <span className="text-sm font-medium text-gray-300 truncate">
+          {state.name || 'Untitled'}
+        </span>
+
+        <div className="flex-1" />
+
+        {/* Tab switcher */}
+        <div className="flex bg-gray-800/50 rounded-lg p-0.5 border border-gray-700">
+          <button
+            className={`px-3 py-1 text-xs rounded-md transition-colors ${
+              activeTab === 'lanes'
+                ? 'bg-gray-700 text-gray-200 font-medium'
+                : 'text-gray-500 hover:text-gray-300'
+            }`}
+            onClick={() => handleTabChange('lanes')}
+          >
+            Lanes
+          </button>
+          <button
+            className={`px-3 py-1 text-xs rounded-md transition-colors ${
+              activeTab === 'editor'
+                ? 'bg-gray-700 text-gray-200 font-medium'
+                : 'text-gray-500 hover:text-gray-300'
+            }`}
+            onClick={() => handleTabChange('editor')}
+          >
+            Editor
+          </button>
         </div>
       </div>
 
@@ -92,8 +138,34 @@ function EditorContent() {
       {state.error && (
         <div className="p-3 rounded-lg bg-red-500/10 border border-red-500/30 text-red-400 text-sm">
           {state.error}
+          <button
+            className="ml-2 text-red-500 hover:text-red-400"
+            onClick={() => dispatch({ type: 'SET_ERROR', payload: null })}
+          >
+            ×
+          </button>
         </div>
       )}
+
+      {/* Tab content */}
+      {activeTab === 'lanes' ? (
+        <PerformanceLanesView />
+      ) : (
+        <EditorContent />
+      )}
+    </div>
+  );
+}
+
+function EditorContent() {
+  const { state, dispatch } = useProject();
+  const { generateFull } = useAutoAnalysis();
+  useKeyboardShortcuts();
+
+  return (
+    <>
+      {/* Editor toolbar */}
+      <EditorToolbar />
 
       {/* Main content: Grid + Side Panel */}
       <div className="flex gap-4">
@@ -159,6 +231,6 @@ function EditorContent() {
 
       {/* Bottom: Timeline */}
       <TimelinePanel />
-    </div>
+    </>
   );
 }

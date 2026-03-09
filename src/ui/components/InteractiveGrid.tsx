@@ -90,11 +90,20 @@ export function InteractiveGrid({ assignments, selectedEventIndex, onEventClick,
     return map;
   }, [assignments, voiceByNote]);
 
-  // Selected assignment pad
-  const selectedAssignment = assignments?.find(a => a.eventIndex === selectedEventIndex);
-  const selectedPadKey = selectedAssignment?.row !== undefined && selectedAssignment?.col !== undefined
-    ? `${selectedAssignment.row},${selectedAssignment.col}`
-    : null;
+  // Selected pads: all assignments at the same start time as the selected event
+  const selectedPadKeys = useMemo(() => {
+    const keys = new Set<string>();
+    if (selectedEventIndex === null || !assignments) return keys;
+    const selectedAssignment = assignments.find(a => a.eventIndex === selectedEventIndex);
+    if (!selectedAssignment) return keys;
+    const targetTime = selectedAssignment.startTime;
+    for (const a of assignments) {
+      if (a.startTime === targetTime && a.row !== undefined && a.col !== undefined) {
+        keys.add(`${a.row},${a.col}`);
+      }
+    }
+    return keys;
+  }, [assignments, selectedEventIndex]);
 
   // Handle dropping a sound onto a pad
   const handleDrop = useCallback((e: React.DragEvent, padKey: string) => {
@@ -176,7 +185,7 @@ export function InteractiveGrid({ assignments, selectedEventIndex, onEventClick,
       const padKey = `${row},${col}`;
       const voice = layout?.padToVoice[padKey];
       const summary = padSummaries.get(padKey);
-      const isSelected = padKey === selectedPadKey;
+      const isSelected = selectedPadKeys.has(padKey);
       const isDragOver = padKey === dragOverPad;
       const isDragSource = padKey === dragSourcePad;
       const isLeftZone = col < 4;

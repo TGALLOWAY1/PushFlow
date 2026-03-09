@@ -57,7 +57,7 @@ export function TimelinePanel() {
         <span className="font-medium">
           Timeline
           <span className="text-gray-500 ml-2">
-            {filteredAssignments.length} events
+            {new Set(filteredAssignments.map(a => a.startTime)).size} events
           </span>
         </span>
         <span className="text-gray-600">{collapsed ? '+' : '-'}</span>

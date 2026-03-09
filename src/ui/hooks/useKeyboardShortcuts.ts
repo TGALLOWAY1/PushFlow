@@ -45,6 +45,42 @@ export function useKeyboardShortcuts() {
         return;
       }
 
+      // Arrow Left/Right: Navigate through time steps (groups of simultaneous events)
+      if (e.key === 'ArrowLeft' || e.key === 'ArrowRight') {
+        const assignments = state.analysisResult?.executionPlan.fingerAssignments;
+        if (!assignments || assignments.length === 0) return;
+        e.preventDefault();
+
+        // Build sorted unique start times (time steps)
+        const uniqueTimes = [...new Set(assignments.map(a => a.startTime))].sort((a, b) => a - b);
+        if (uniqueTimes.length === 0) return;
+
+        // Find the current time step from the selected event
+        const selectedAssignment = state.selectedEventIndex !== null
+          ? assignments.find(a => a.eventIndex === state.selectedEventIndex)
+          : null;
+        const currentTime = selectedAssignment?.startTime ?? null;
+
+        let targetTime: number;
+        if (currentTime === null) {
+          targetTime = e.key === 'ArrowRight' ? uniqueTimes[0]! : uniqueTimes[uniqueTimes.length - 1]!;
+        } else {
+          const currentPos = uniqueTimes.indexOf(currentTime);
+          if (e.key === 'ArrowRight') {
+            const nextIdx = currentPos < uniqueTimes.length - 1 ? currentPos + 1 : 0;
+            targetTime = uniqueTimes[nextIdx]!;
+          } else {
+            const prevIdx = currentPos > 0 ? currentPos - 1 : uniqueTimes.length - 1;
+            targetTime = uniqueTimes[prevIdx]!;
+          }
+        }
+
+        // Select the first event at the target time step
+        const firstAtTime = assignments.find(a => a.startTime === targetTime);
+        dispatch({ type: 'SELECT_EVENT', payload: firstAtTime?.eventIndex ?? null });
+        return;
+      }
+
       // Delete / Backspace: Remove pad at selected event
       if (e.key === 'Delete' || e.key === 'Backspace') {
         if (state.selectedEventIndex === null) return;

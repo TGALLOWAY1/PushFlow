@@ -80,7 +80,7 @@ export function ExecutionTimeline({ assignments, voices, selectedEventIndex, onE
           <span className="w-2 h-2 rounded-sm" style={{ backgroundColor: HAND_STYLES.right.bg }} /> Right
         </span>
         <span className="text-gray-500">|</span>
-        <span>{assignments.length} events</span>
+        <span>{new Set(assignments.map(a => a.startTime)).size} events</span>
         <span>{assignments.filter(a => a.assignedHand === 'Unplayable').length} unplayable</span>
         <span>Duration: {duration.toFixed(1)}s</span>
       </div>

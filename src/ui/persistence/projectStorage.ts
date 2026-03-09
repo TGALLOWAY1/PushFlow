@@ -206,6 +206,10 @@ function validateProjectState(parsed: unknown): ProjectState {
     engineConfig: (p.engineConfig && typeof p.engineConfig === 'object')
       ? p.engineConfig as ProjectState['engineConfig']
       : base.engineConfig,
+    // Performance Lanes (defaults to [] for old projects)
+    performanceLanes: Array.isArray(p.performanceLanes) ? p.performanceLanes as ProjectState['performanceLanes'] : [],
+    laneGroups: Array.isArray(p.laneGroups) ? p.laneGroups as ProjectState['laneGroups'] : [],
+    sourceFiles: Array.isArray(p.sourceFiles) ? p.sourceFiles as ProjectState['sourceFiles'] : [],
     // Ephemeral state always reset
     selectedEventIndex: null,
     isProcessing: false,
