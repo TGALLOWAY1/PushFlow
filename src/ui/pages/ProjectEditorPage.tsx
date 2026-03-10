@@ -1,8 +1,9 @@
 /**
  * ProjectEditorPage.
  *
- * Main workspace with two tabs:
+ * Main workspace with three tabs:
  * - Lanes: Import, organize, and preview performance lanes
+ * - Loop Editor: Manual lane-based step sequencer for test patterns
  * - Editor: Grid layout editing, analysis, and timeline
  *
  * Editor Layout:
@@ -32,10 +33,11 @@ import { DiagnosticsPanel } from '../components/DiagnosticsPanel';
 import { EventDetailPanel } from '../components/EventDetailPanel';
 import { TimelinePanel } from '../components/TimelinePanel';
 import { PerformanceLanesView } from '../components/lanes/PerformanceLanesView';
+import { LoopEditorView } from '../components/loop-editor/LoopEditorView';
 import { useAutoAnalysis } from '../hooks/useAutoAnalysis';
 import { useKeyboardShortcuts } from '../hooks/useKeyboardShortcuts';
 
-type EditorTab = 'lanes' | 'editor';
+type EditorTab = 'lanes' | 'loop-editor' | 'editor';
 
 export function ProjectEditorPage() {
   const { id } = useParams<{ id: string }>();
@@ -123,6 +125,16 @@ function ProjectContent() {
           </button>
           <button
             className={`px-3 py-1 text-xs rounded-md transition-colors ${
+              activeTab === 'loop-editor'
+                ? 'bg-gray-700 text-gray-200 font-medium'
+                : 'text-gray-500 hover:text-gray-300'
+            }`}
+            onClick={() => handleTabChange('loop-editor')}
+          >
+            Loop Editor
+          </button>
+          <button
+            className={`px-3 py-1 text-xs rounded-md transition-colors ${
               activeTab === 'editor'
                 ? 'bg-gray-700 text-gray-200 font-medium'
                 : 'text-gray-500 hover:text-gray-300'
@@ -150,6 +162,8 @@ function ProjectContent() {
       {/* Tab content */}
       {activeTab === 'lanes' ? (
         <PerformanceLanesView />
+      ) : activeTab === 'loop-editor' ? (
+        <LoopEditorView />
       ) : (
         <EditorContent />
       )}
