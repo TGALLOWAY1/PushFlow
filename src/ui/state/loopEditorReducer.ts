@@ -15,6 +15,11 @@ import {
   stepsPerBar,
   totalSteps,
 } from '../../types/loopEditor';
+import { type RudimentType } from '../../types/rudiment';
+import { generateRudiment } from '../../engine/rudiment/rudimentGenerator';
+import { assignLanesToPads } from '../../engine/rudiment/padAssignment';
+import { assignFingers } from '../../engine/rudiment/fingerAssigner';
+import { scoreComplexity } from '../../engine/rudiment/complexityScorer';
 import { generateId } from '../../utils/idGenerator';
 
 // ============================================================================
@@ -23,7 +28,7 @@ import { generateId } from '../../utils/idGenerator';
 
 export type LoopEditorAction =
   // Config
-  | { type: 'SET_BAR_COUNT'; payload: 8 | 16 }
+  | { type: 'SET_BAR_COUNT'; payload: 4 | 8 | 16 }
   | { type: 'SET_SUBDIVISION'; payload: LoopConfig['subdivision'] }
   | { type: 'SET_BPM'; payload: number }
   // Lane management
@@ -44,7 +49,10 @@ export type LoopEditorAction =
   | { type: 'SET_PLAYHEAD'; payload: number }
   // Bulk
   | { type: 'LOAD_LOOP_STATE'; payload: LoopState }
-  | { type: 'GENERATE_TEST_PATTERN' };
+  | { type: 'GENERATE_TEST_PATTERN' }
+  // Rudiment
+  | { type: 'GENERATE_RUDIMENT'; payload: { rudimentType: RudimentType } }
+  | { type: 'CLEAR_RUDIMENT_RESULT' };
 
 // ============================================================================
 // Reducer
@@ -55,10 +63,10 @@ export function loopEditorReducer(state: LoopState, action: LoopEditorAction): L
     // ---- Config ----
 
     case 'SET_BAR_COUNT':
-      return { ...state, config: { ...state.config, barCount: action.payload } };
+      return { ...state, config: { ...state.config, barCount: action.payload }, rudimentResult: null };
 
     case 'SET_SUBDIVISION':
-      return { ...state, config: { ...state.config, subdivision: action.payload }, events: new Map() };
+      return { ...state, config: { ...state.config, subdivision: action.payload }, events: new Map(), rudimentResult: null };
 
     case 'SET_BPM':
       return { ...state, config: { ...state.config, bpm: Math.max(20, Math.min(300, action.payload)) } };
@@ -87,6 +95,7 @@ export function loopEditorReducer(state: LoopState, action: LoopEditorAction): L
         ...state,
         lanes: state.lanes.filter(l => l.id !== action.payload),
         events: newEvents,
+        rudimentResult: null,
       };
     }
 
@@ -147,7 +156,7 @@ export function loopEditorReducer(state: LoopState, action: LoopEditorAction): L
           velocity: 100,
         });
       }
-      return { ...state, events: newEvents };
+      return { ...state, events: newEvents, rudimentResult: null };
     }
 
     case 'SET_CELL_VELOCITY': {
@@ -160,7 +169,7 @@ export function loopEditorReducer(state: LoopState, action: LoopEditorAction): L
     }
 
     case 'CLEAR_ALL_EVENTS':
-      return { ...state, events: new Map() };
+      return { ...state, events: new Map(), rudimentResult: null };
 
     // ---- Playback ----
 
@@ -176,7 +185,26 @@ export function loopEditorReducer(state: LoopState, action: LoopEditorAction): L
       return action.payload;
 
     case 'GENERATE_TEST_PATTERN':
-      return generateTestPattern(state);
+      return { ...generateTestPattern(state), rudimentResult: null };
+
+    // ---- Rudiment ----
+
+    case 'GENERATE_RUDIMENT': {
+      const { rudimentType } = action.payload;
+      const { lanes, events } = generateRudiment(rudimentType, state.config);
+      const padAssignments = assignLanesToPads(lanes, rudimentType);
+      const fingerAssignments = assignFingers(events, padAssignments, state.config);
+      const complexity = scoreComplexity(events, lanes, state.config, fingerAssignments);
+      return {
+        ...state,
+        lanes,
+        events,
+        rudimentResult: { rudimentType, padAssignments, fingerAssignments, complexity },
+      };
+    }
+
+    case 'CLEAR_RUDIMENT_RESULT':
+      return { ...state, rudimentResult: null };
 
     default:
       return state;
@@ -199,6 +227,7 @@ export function createInitialLoopState(): LoopState {
     events: new Map(),
     isPlaying: false,
     playheadStep: 0,
+    rudimentResult: null,
   };
 }
 

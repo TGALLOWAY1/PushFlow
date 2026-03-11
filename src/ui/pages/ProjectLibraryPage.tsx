@@ -205,6 +205,7 @@ export function ProjectLibraryPage() {
     navigate(`/project/${id}`);
   }, [navigate]);
 
+  // @ts-expect-error Declared for future use, not yet wired to UI
   const handleDeleteProject = useCallback((id: string) => {
     deleteProject(id);
     setSavedProjects(listProjects());
