@@ -25,6 +25,8 @@ interface LoopGridCanvasProps {
   playheadStep: number;
   isPlaying: boolean;
   dispatch: React.Dispatch<LoopEditorAction>;
+  /** Highlighted step column for rudiment event stepping. */
+  activeStepIndex?: number | null;
 }
 
 const CELL_WIDTH = 28;
@@ -39,6 +41,7 @@ export function LoopGridCanvas({
   playheadStep,
   isPlaying,
   dispatch,
+  activeStepIndex,
 }: LoopGridCanvasProps) {
   const playheadRef = useRef<HTMLDivElement>(null);
   const steps = totalSteps(config);
@@ -173,6 +176,17 @@ export function LoopGridCanvas({
               })}
             </div>
           ))}
+
+          {/* Active step highlight (rudiment event stepping) */}
+          {activeStepIndex != null && activeStepIndex >= 0 && activeStepIndex < steps && (
+            <div
+              className="absolute top-0 bottom-0 bg-yellow-400/10 z-10 pointer-events-none"
+              style={{
+                left: activeStepIndex * CELL_WIDTH,
+                width: CELL_WIDTH,
+              }}
+            />
+          )}
 
           {/* Playhead */}
           {isPlaying && (
