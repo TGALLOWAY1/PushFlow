@@ -18,6 +18,7 @@ export function saveLoopState(projectId: string, state: LoopState): void {
     // Never persist playback state
     isPlaying: false,
     playheadStep: 0,
+    rudimentResult: state.rudimentResult ?? null,
   };
   try {
     localStorage.setItem(`${LOOP_PREFIX}${projectId}`, JSON.stringify(serializable));
@@ -38,6 +39,7 @@ export function loadLoopState(projectId: string): LoopState | null {
       events: new Map<LoopCellKey, LoopEvent>(parsed.events),
       isPlaying: false,
       playheadStep: 0,
+      rudimentResult: parsed.rudimentResult ?? null,
     };
   } catch {
     return null;

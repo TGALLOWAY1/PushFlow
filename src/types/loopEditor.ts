@@ -7,6 +7,8 @@
  * structured performance data for downstream layout and analysis systems.
  */
 
+import { type RudimentResult } from './rudiment';
+
 // ============================================================================
 // Loop Configuration
 // ============================================================================
@@ -17,7 +19,7 @@ export type LoopSubdivision = '1/1' | '1/2' | '1/4' | '1/8';
 /** Top-level loop configuration. */
 export interface LoopConfig {
   /** Number of bars in the loop. */
-  barCount: 8 | 16;
+  barCount: 4 | 8 | 16;
   /** Grid subdivision — determines columns per bar. */
   subdivision: LoopSubdivision;
   /** Tempo in BPM. */
@@ -81,6 +83,8 @@ export interface LoopState {
   isPlaying: boolean;
   /** Current playhead position (step index, fractional). */
   playheadStep: number;
+  /** Rudiment analysis results (present after Generate Rudiment). */
+  rudimentResult?: RudimentResult | null;
 }
 
 // ============================================================================

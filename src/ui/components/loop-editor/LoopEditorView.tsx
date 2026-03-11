@@ -2,10 +2,11 @@
  * LoopEditorView.
  *
  * Top-level container for the Loop Editor tab.
- * Manages local loop state, persistence, playback, and project commit.
+ * Manages local loop state, persistence, playback, project commit,
+ * and rudiment generation with event stepping.
  */
 
-import { useReducer, useEffect, useRef, useCallback, useMemo } from 'react';
+import { useReducer, useEffect, useRef, useCallback, useMemo, useState } from 'react';
 import { useProject } from '../../state/ProjectContext';
 import {
   loopEditorReducer,
@@ -15,10 +16,13 @@ import { saveLoopState, loadLoopState } from '../../persistence/loopStorage';
 import { convertLoopToPerformanceLanes } from '../../state/loopToLanes';
 import { type LoopLane } from '../../../types/loopEditor';
 import { stepDuration, totalSteps } from '../../../types/loopEditor';
+import { type RudimentType } from '../../../types/rudiment';
 import { generateId } from '../../../utils/idGenerator';
 import { LoopEditorToolbar } from './LoopEditorToolbar';
 import { LoopLaneSidebar } from './LoopLaneSidebar';
 import { LoopGridCanvas } from './LoopGridCanvas';
+import { RudimentEventStepper } from './RudimentEventStepper';
+import { RudimentPadGrid } from './RudimentPadGrid';
 
 const LANE_COLORS = ['#ef4444', '#f97316', '#22c55e', '#eab308', '#3b82f6', '#a855f7', '#ec4899', '#14b8a6'];
 const DEFAULT_MIDI_NOTES = [36, 38, 42, 46, 48, 60, 62, 64];
@@ -39,8 +43,20 @@ export function LoopEditorView() {
   const lastTimeRef = useRef<number>(0);
   const playheadRef = useRef<number>(loopState.playheadStep);
 
+  // Event stepping state (local, not persisted)
+  const [activeEventIndex, setActiveEventIndex] = useState<number | null>(null);
+
   // Keep playheadRef in sync
   playheadRef.current = loopState.playheadStep;
+
+  // Clear active event when rudiment result changes to null
+  const prevRudimentRef = useRef(loopState.rudimentResult);
+  useEffect(() => {
+    if (prevRudimentRef.current && !loopState.rudimentResult) {
+      setActiveEventIndex(null);
+    }
+    prevRudimentRef.current = loopState.rudimentResult;
+  }, [loopState.rudimentResult]);
 
   // Auto-save to localStorage (debounced)
   useEffect(() => {
@@ -115,6 +131,20 @@ export function LoopEditorView() {
     });
   }, [loopState, projectState.name, projectState.laneGroups.length, projectDispatch]);
 
+  // Generate rudiment
+  const handleGenerateRudiment = useCallback((rudimentType: RudimentType) => {
+    dispatch({ type: 'GENERATE_RUDIMENT', payload: { rudimentType } });
+    setActiveEventIndex(null);
+  }, []);
+
+  // Derive active step index for grid column highlight
+  const activeStepIndex = useMemo(() => {
+    if (activeEventIndex === null || !loopState.rudimentResult) return null;
+    const fa = loopState.rudimentResult.fingerAssignments;
+    if (activeEventIndex < 0 || activeEventIndex >= fa.length) return null;
+    return fa[activeEventIndex].stepIndex;
+  }, [activeEventIndex, loopState.rudimentResult]);
+
   return (
     <div className="space-y-3">
       {/* Toolbar */}
@@ -126,19 +156,48 @@ export function LoopEditorView() {
         dispatch={dispatch}
         onAddLane={handleAddLane}
         onCommitToProject={handleCommitToProject}
+        onGenerateRudiment={handleGenerateRudiment}
+        hasRudimentResult={!!loopState.rudimentResult}
       />
 
-      {/* Main content: sidebar + grid */}
-      <div className="flex rounded-lg bg-gray-800/20 border border-gray-700 overflow-hidden" style={{ minHeight: 300 }}>
-        <LoopLaneSidebar lanes={loopState.lanes} dispatch={dispatch} />
-        <LoopGridCanvas
-          config={loopState.config}
+      {/* Event stepper (visible when rudiment result exists) */}
+      {loopState.rudimentResult && (
+        <RudimentEventStepper
+          fingerAssignments={loopState.rudimentResult.fingerAssignments}
+          complexity={loopState.rudimentResult.complexity}
+          activeEventIndex={activeEventIndex}
+          onSetActiveEvent={setActiveEventIndex}
           lanes={loopState.lanes}
-          events={loopState.events}
-          playheadStep={loopState.playheadStep}
-          isPlaying={loopState.isPlaying}
-          dispatch={dispatch}
         />
+      )}
+
+      {/* Step sequencer + pad grid side by side */}
+      <div className="flex gap-3 items-start">
+        {/* Step sequencer: sidebar + grid */}
+        <div className="flex-1 min-w-0 flex rounded-lg bg-gray-800/20 border border-gray-700 overflow-hidden" style={{ minHeight: 300 }}>
+          <LoopLaneSidebar lanes={loopState.lanes} dispatch={dispatch} />
+          <LoopGridCanvas
+            config={loopState.config}
+            lanes={loopState.lanes}
+            events={loopState.events}
+            playheadStep={loopState.playheadStep}
+            isPlaying={loopState.isPlaying}
+            dispatch={dispatch}
+            activeStepIndex={activeStepIndex}
+          />
+        </div>
+
+        {/* Pad grid (visible when rudiment result exists) */}
+        {loopState.rudimentResult && (
+          <div className="flex-shrink-0">
+            <RudimentPadGrid
+              padAssignments={loopState.rudimentResult.padAssignments}
+              fingerAssignments={loopState.rudimentResult.fingerAssignments}
+              activeEventIndex={activeEventIndex}
+              lanes={loopState.lanes}
+            />
+          </div>
+        )}
       </div>
     </div>
   );
