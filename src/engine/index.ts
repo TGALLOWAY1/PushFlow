@@ -122,6 +122,33 @@ export { applyRandomMutation, getEmptyPads } from './optimization/mutationServic
 export { generateCandidates } from './optimization/multiCandidateGenerator';
 export { rankCandidates, filterPareto, compositeScore, compareDimensions } from './optimization/candidateRanker';
 
+// Pattern generation (rudiment/ostinato candidate generator)
+export { RudimentGenerator } from './rudiment/patternGenerator';
+export { getMotifSeed, getAllMotifFamilies, type MotifSeed } from './rudiment/motifLibrary';
+export {
+  mirror, rotate, accentShift, subdivisionInsertion,
+  densityLift, sparseReduction, callResponseSwap,
+  applyTransform, ALL_TRANSFORMS,
+  type TransformName,
+} from './rudiment/transforms';
+export { buildPhrase } from './rudiment/phraseBuilder';
+export {
+  coordinateHands,
+  anchorAlignmentScore, interlockScore, collisionPressureScore,
+  independenceScore, phraseCoherenceScore,
+  type CoordinationScores,
+} from './rudiment/coordination';
+export {
+  computeDensity, computeSyncopationRatio, computeIndependenceScore,
+  computeRepetitionScore, computePhraseCoherenceScore,
+  computeCollisionPressureScore, computeAllMetrics,
+} from './rudiment/coherenceMetrics';
+export { filterAndDiversify } from './rudiment/candidateFilter';
+export {
+  generateCandidateSolutions, patternToPerformance, patternToLayout,
+  SOUND_CLASS_MIDI_MAP, type PipelineConfig,
+} from './rudiment/patternToPipeline';
+
 // Analysis (explainability)
 export { analyzePassages, getHardestPassages } from './analysis/passageAnalyzer';
 export { compareCandidates, summarizeComparison } from './analysis/candidateComparator';

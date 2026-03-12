@@ -33,3 +33,6 @@ export * from './engineConfig';
 
 // Performance lanes
 export * from './performanceLane';
+
+// Pattern candidate (rudiment/ostinato generator)
+export * from './patternCandidate';
