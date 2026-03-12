@@ -2,18 +2,13 @@
  * LoopEditorToolbar.
  *
  * Top toolbar for the Loop Editor with config controls,
- * transport, lane management, rudiment generation, and project commit.
+ * transport, lane management, pattern generation, and project commit.
  */
 
-import { useState, useRef, useEffect } from 'react';
 import { type LoopConfig, type LoopSubdivision } from '../../../types/loopEditor';
-import {
-  type RudimentType,
-  ALL_RUDIMENT_TYPES,
-  RUDIMENT_LABELS,
-  RUDIMENT_DESCRIPTIONS,
-} from '../../../types/rudiment';
+import { type PatternRecipe } from '../../../types/patternRecipe';
 import { type LoopEditorAction } from '../../state/loopEditorReducer';
+import { PatternSelector } from './PatternSelector';
 
 interface LoopEditorToolbarProps {
   config: LoopConfig;
@@ -23,8 +18,10 @@ interface LoopEditorToolbarProps {
   dispatch: React.Dispatch<LoopEditorAction>;
   onAddLane: () => void;
   onCommitToProject: () => void;
-  onGenerateRudiment: (type: RudimentType) => void;
-  hasRudimentResult: boolean;
+  onGeneratePattern: (recipe: PatternRecipe) => void;
+  onRandomizePattern: (seed: number) => void;
+  onOpenRecipeEditor: (recipe?: PatternRecipe) => void;
+  hasPatternResult: boolean;
 }
 
 const SUBDIVISIONS: LoopSubdivision[] = ['1/8', '1/4', '1/2', '1/1'];
@@ -37,24 +34,11 @@ export function LoopEditorToolbar({
   dispatch,
   onAddLane,
   onCommitToProject,
-  onGenerateRudiment,
-  hasRudimentResult,
+  onGeneratePattern,
+  onRandomizePattern,
+  onOpenRecipeEditor,
+  hasPatternResult,
 }: LoopEditorToolbarProps) {
-  const [showRudimentMenu, setShowRudimentMenu] = useState(false);
-  const menuRef = useRef<HTMLDivElement>(null);
-
-  // Close dropdown on outside click
-  useEffect(() => {
-    if (!showRudimentMenu) return;
-    const handler = (e: MouseEvent) => {
-      if (menuRef.current && !menuRef.current.contains(e.target as Node)) {
-        setShowRudimentMenu(false);
-      }
-    };
-    document.addEventListener('mousedown', handler);
-    return () => document.removeEventListener('mousedown', handler);
-  }, [showRudimentMenu]);
-
   return (
     <div className="flex items-center gap-3 px-3 py-2 rounded-lg bg-gray-800/30 border border-gray-700 flex-wrap">
       {/* Label */}
@@ -147,37 +131,13 @@ export function LoopEditorToolbar({
         + Add Lane
       </button>
 
-      {/* Generate Rudiment (dropdown) */}
-      <div className="relative" ref={menuRef}>
-        <button
-          className={`px-2 py-1 text-xs rounded border transition-colors ${
-            hasRudimentResult
-              ? 'bg-emerald-600/30 text-emerald-300 border-emerald-500/40 hover:bg-emerald-600/40'
-              : 'bg-emerald-600/20 text-emerald-400 border-emerald-600/30 hover:bg-emerald-600/30'
-          }`}
-          onClick={() => setShowRudimentMenu(!showRudimentMenu)}
-        >
-          Generate Rudiment ▾
-        </button>
-
-        {showRudimentMenu && (
-          <div className="absolute right-0 top-full mt-1 z-30 bg-gray-800 border border-gray-600 rounded-lg shadow-xl py-1 min-w-[240px]">
-            {ALL_RUDIMENT_TYPES.map(type => (
-              <button
-                key={type}
-                className="w-full text-left px-3 py-2 hover:bg-gray-700 transition-colors"
-                onClick={() => {
-                  onGenerateRudiment(type);
-                  setShowRudimentMenu(false);
-                }}
-              >
-                <div className="text-xs text-gray-200 font-medium">{RUDIMENT_LABELS[type]}</div>
-                <div className="text-[10px] text-gray-500">{RUDIMENT_DESCRIPTIONS[type]}</div>
-              </button>
-            ))}
-          </div>
-        )}
-      </div>
+      {/* Pattern Selector (replaces rudiment dropdown) */}
+      <PatternSelector
+        onSelectPreset={onGeneratePattern}
+        onRandomize={onRandomizePattern}
+        onCustomize={onOpenRecipeEditor}
+        hasPatternResult={hasPatternResult}
+      />
 
       {/* Commit to Project */}
       <button

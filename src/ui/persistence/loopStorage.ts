@@ -3,6 +3,7 @@
  *
  * Save/load loop editor state to localStorage.
  * Handles Map<LoopCellKey, LoopEvent> serialization.
+ * Supports migration from rudimentResult to patternResult.
  */
 
 import { type LoopState, type LoopCellKey, type LoopEvent } from '../../types/loopEditor';
@@ -19,6 +20,7 @@ export function saveLoopState(projectId: string, state: LoopState): void {
     isPlaying: false,
     playheadStep: 0,
     rudimentResult: state.rudimentResult ?? null,
+    patternResult: state.patternResult ?? null,
   };
   try {
     localStorage.setItem(`${LOOP_PREFIX}${projectId}`, JSON.stringify(serializable));
@@ -40,6 +42,7 @@ export function loadLoopState(projectId: string): LoopState | null {
       isPlaying: false,
       playheadStep: 0,
       rudimentResult: parsed.rudimentResult ?? null,
+      patternResult: parsed.patternResult ?? null,
     };
   } catch {
     return null;
