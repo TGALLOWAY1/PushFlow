@@ -21,6 +21,7 @@ interface ExecutionTimelineProps {
   selectedEventIndex?: number | null;
   onEventClick?: (eventIndex: number) => void;
   tempo?: number;
+  currentTime?: number;
 }
 
 const FINGER_ABBREV: Record<string, string> = {
@@ -38,7 +39,7 @@ const MIN_ZOOM = 1;
 const MAX_ZOOM = 20;
 const EVENT_WIDTH = 20;
 
-export function ExecutionTimeline({ assignments, voices, selectedEventIndex, onEventClick, tempo = 120 }: ExecutionTimelineProps) {
+export function ExecutionTimeline({ assignments, voices, selectedEventIndex, onEventClick, tempo = 120, currentTime }: ExecutionTimelineProps) {
   const [zoom, setZoom] = useState(1);
   const scrollRef = useRef<HTMLDivElement>(null);
 
@@ -226,6 +227,19 @@ export function ExecutionTimeline({ assignments, voices, selectedEventIndex, onE
                 />
               ) : null
             ))}
+
+            {/* Playhead */}
+            {currentTime !== undefined && (
+              <div
+                className="absolute top-0 bottom-0 z-30 pointer-events-none"
+                style={{
+                  left: `${((currentTime - minTime) / duration) * 100}%`,
+                  width: 2,
+                  backgroundColor: 'rgba(239, 68, 68, 0.8)',
+                  boxShadow: '0 0 8px rgba(239, 68, 68, 0.5)'
+                }}
+              />
+            )}
 
             {/* Events */}
             {assignments.map((a, i) => {

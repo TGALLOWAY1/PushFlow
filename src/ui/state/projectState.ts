@@ -84,6 +84,10 @@ export interface ProjectState {
   isProcessing: boolean;
   error: string | null;
   analysisStale: boolean;
+
+  // Transport
+  currentTime: number;
+  isPlaying: boolean;
 }
 
 // ============================================================================
@@ -153,6 +157,12 @@ export type ProjectAction =
   | { type: 'SET_PROCESSING'; payload: boolean }
   | { type: 'SET_ERROR'; payload: string | null }
 
+  // Transport
+  | { type: 'SET_CURRENT_TIME'; payload: number }
+  | { type: 'TICK_TIME'; payload: number }
+  | { type: 'SET_IS_PLAYING'; payload: boolean }
+  | { type: 'TOGGLE_PLAYING' }
+
   // Performance Lanes (delegated to lanesReducer)
   | LaneAction;
 
@@ -167,6 +177,10 @@ const EPHEMERAL_ACTIONS = new Set<ProjectAction['type']>([
   'SET_CANDIDATES',
   'SELECT_CANDIDATE',
   'TOGGLE_LANE_GROUP_COLLAPSE',
+  'SET_CURRENT_TIME',
+  'TICK_TIME',
+  'SET_IS_PLAYING',
+  'TOGGLE_PLAYING',
 ]);
 
 export function isEphemeralAction(action: ProjectAction): boolean {
@@ -211,6 +225,8 @@ export function projectReducer(state: ProjectState, action: ProjectAction): Proj
         isProcessing: false,
         error: null,
         analysisStale: true,
+        currentTime: 0,
+        isPlaying: false,
       };
 
     case 'RESET':
@@ -362,6 +378,19 @@ export function projectReducer(state: ProjectState, action: ProjectAction): Proj
     case 'SET_ERROR':
       return { ...state, error: action.payload, isProcessing: false };
 
+    // -- Transport --
+    case 'SET_CURRENT_TIME':
+      return { ...state, currentTime: action.payload };
+
+    case 'TICK_TIME':
+      return { ...state, currentTime: state.currentTime + action.payload };
+
+    case 'SET_IS_PLAYING':
+      return { ...state, isPlaying: action.payload };
+
+    case 'TOGGLE_PLAYING':
+      return { ...state, isPlaying: !state.isPlaying };
+
     default:
       return state;
   }
@@ -411,5 +440,7 @@ export function createEmptyProjectState(): ProjectState {
     isProcessing: false,
     error: null,
     analysisStale: false,
+    currentTime: 0,
+    isPlaying: false,
   };
 }

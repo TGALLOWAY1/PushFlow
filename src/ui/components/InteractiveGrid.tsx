@@ -115,6 +115,31 @@ export function InteractiveGrid({ assignments, selectedEventIndex, onEventClick,
     return keys;
   }, [assignments, selectedEventIndex]);
 
+  // Active playing pads
+  const activePadKeys = useMemo(() => {
+    const keys = new Set<string>();
+    if (!assignments || (!state.isPlaying && state.currentTime === 0)) return keys;
+    
+    // Map event keys to durations
+    const durationMap = new Map<string, number>();
+    for (const stream of state.soundStreams) {
+      if (stream.muted) continue;
+      for (const ev of stream.events) {
+        durationMap.set(ev.eventKey, ev.duration);
+      }
+    }
+
+    for (const a of assignments) {
+      const duration = (a.eventKey && durationMap.get(a.eventKey)) || 0.2;
+      if (state.currentTime >= a.startTime && state.currentTime < a.startTime + duration) {
+        if (a.row !== undefined && a.col !== undefined) {
+          keys.add(`${a.row},${a.col}`);
+        }
+      }
+    }
+    return keys;
+  }, [assignments, state.currentTime, state.isPlaying, state.soundStreams]);
+
   // Handle dropping a sound onto a pad
   const handleDrop = useCallback((e: React.DragEvent, padKey: string) => {
     e.preventDefault();
@@ -196,6 +221,7 @@ export function InteractiveGrid({ assignments, selectedEventIndex, onEventClick,
       const voice = layout?.padToVoice[padKey];
       const summary = padSummaries.get(padKey);
       const isSelected = selectedPadKeys.has(padKey);
+      const isActivePlaying = activePadKeys.has(padKey);
       const isDragOver = padKey === dragOverPad;
       const isDragSource = padKey === dragSourcePad;
       const isLeftZone = col < 4;
@@ -250,6 +276,7 @@ export function InteractiveGrid({ assignments, selectedEventIndex, onEventClick,
             w-14 h-14 rounded-lg text-[10px] font-mono leading-tight
             border-2 transition-all duration-100 select-none
             ${isSelected ? 'ring-2 ring-yellow-400/60 z-10 scale-105' : ''}
+            ${isActivePlaying && !isSelected ? 'ring-2 ring-emerald-400/90 z-10 scale-105 brightness-125' : ''}
             ${isDragOver ? 'ring-2 ring-blue-400/60 scale-105' : ''}
             ${isDragSource ? 'opacity-30' : ''}
             ${isMuted ? 'opacity-30 pointer-events-none' : ''}
@@ -279,31 +306,21 @@ export function InteractiveGrid({ assignments, selectedEventIndex, onEventClick,
           {voice ? (
             <>
               {/* Voice name */}
-              <span className="block truncate w-full text-center text-[9px] font-semibold text-white/90 leading-none">
+              <span className="block truncate w-full px-0.5 text-center text-[11px] font-semibold text-white/95 leading-tight">
                 {voice.name}
               </span>
               {/* Fingers (from analysis) */}
               {fingerList.length > 0 && (
-                <span className="block text-[8px] leading-none mt-0.5" style={{ color: textColor }}>
+                <span className="block text-[10px] font-medium leading-none mt-0.5" style={{ color: textColor }}>
                   {fingerList.join(' ')}
                 </span>
               )}
-              {/* Hit count badge */}
-              {summary && summary.hitCount > 0 && (
-                <span className="absolute top-0.5 right-0.5 text-[7px] font-bold bg-black/40 rounded px-0.5" style={{ color: textColor }}>
-                  {summary.hitCount}
-                </span>
-              )}
-              {/* Finger constraint badge */}
-              {constraint && (
-                <span className="absolute bottom-0.5 left-0.5 text-[7px] bg-purple-500/30 text-purple-300 rounded px-0.5">
-                  {constraint}
-                </span>
-              )}
+              {/* Hit count and Constraint badges removed as per UX audit. They are now visible solely in the tooltip (title attribute). */}
+              
               {/* Remove button (visible on hover via parent group) */}
               <button
-                className="absolute top-0 left-0 w-4 h-4 flex items-center justify-center
-                           text-[8px] text-red-400 bg-red-500/20 rounded-br opacity-0
+                className="absolute top-0 right-0 w-4 h-4 flex items-center justify-center
+                           text-[9px] text-red-300 bg-red-500/30 rounded-bl opacity-0
                            group-hover:opacity-100 transition-opacity"
                 onClick={e => {
                   e.stopPropagation();
@@ -311,7 +328,7 @@ export function InteractiveGrid({ assignments, selectedEventIndex, onEventClick,
                 }}
                 title="Remove from pad"
               >
-                x
+                ×
               </button>
             </>
           ) : (
