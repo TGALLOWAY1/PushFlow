@@ -244,7 +244,7 @@ export function OptimizerDebugPage() {
               onSort={handleSort}
             />
           )}
-          {activeTab === 'fingers' && <FingerUsageTab report={report} records={records} />}
+          {activeTab === 'fingers' && <FingerUsageTab report={report} />}
           {activeTab === 'costs' && <CostBreakdownTab report={report} records={records} />}
           {activeTab === 'violations' && <ViolationsTab violations={violations} />}
           {activeTab === 'movement' && <MovementTab vizData={vizData} />}
@@ -350,10 +350,8 @@ function EventTimelineTab({
 
 function FingerUsageTab({
   report,
-  records,
 }: {
   report: CandidateReport | null;
-  records: OptimizationEvaluationRecord[];
 }) {
   const fingers: Array<{ name: string; key: keyof import('../../engine/debug').FingerUsageBreakdown }> = [
     { name: 'Thumb', key: 'thumb' },

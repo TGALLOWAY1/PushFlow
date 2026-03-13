@@ -5,9 +5,10 @@
  * Delegated from the main projectReducer.
  */
 
-import { type PerformanceLane, type LaneGroup, type SourceFile, type LaneColorMode, type LaneEvent } from '../../types/performanceLane';
+import { type PerformanceLane, type LaneGroup, type SourceFile, type LaneColorMode } from '../../types/performanceLane';
 import { type ProjectState } from './projectState';
 import { buildSoundStreamsFromLanes } from './lanesToStreams';
+import { buildLegacySourceFile, buildPerformanceLanesFromStreams } from './streamsToLanes';
 
 // ============================================================================
 // Action Types
@@ -16,6 +17,8 @@ import { buildSoundStreamsFromLanes } from './lanesToStreams';
 export type LaneAction =
   // Lane operations
   | { type: 'IMPORT_LANES'; payload: { lanes: PerformanceLane[]; sourceFile: SourceFile; group?: LaneGroup } }
+  | { type: 'UPSERT_LANE_SOURCE'; payload: { lanes: PerformanceLane[]; sourceFile: SourceFile; group?: LaneGroup | null } }
+  | { type: 'REMOVE_LANE_SOURCE'; payload: { sourceFileId: string; groupId?: string | null } }
   | { type: 'RENAME_LANE'; payload: { laneId: string; name: string } }
   | { type: 'SET_LANE_COLOR'; payload: { laneId: string; color: string; colorMode: LaneColorMode } }
   | { type: 'REORDER_LANES'; payload: { orderedIds: string[] } }
@@ -42,6 +45,8 @@ export function isLaneAction(type: string): boolean {
 
 const LANE_ACTION_TYPES = new Set<string>([
   'IMPORT_LANES',
+  'UPSERT_LANE_SOURCE',
+  'REMOVE_LANE_SOURCE',
   'RENAME_LANE',
   'SET_LANE_COLOR',
   'REORDER_LANES',
@@ -82,6 +87,42 @@ export function lanesReducer(state: ProjectState, action: LaneAction): ProjectSt
         performanceLanes: [...state.performanceLanes, ...lanes],
         laneGroups: newGroups,
         sourceFiles: [...state.sourceFiles, sourceFile],
+      };
+    }
+
+    case 'UPSERT_LANE_SOURCE': {
+      const { lanes, sourceFile, group } = action.payload;
+      const nextLanes = [
+        ...state.performanceLanes.filter(l => l.sourceFileId !== sourceFile.id),
+        ...lanes,
+      ];
+      const nextSourceFiles = [
+        ...state.sourceFiles.filter(sf => sf.id !== sourceFile.id),
+        sourceFile,
+      ];
+      const nextGroups = group
+        ? [...state.laneGroups.filter(g => g.groupId !== group.groupId), group]
+        : state.laneGroups;
+
+      return {
+        ...state,
+        updatedAt: now,
+        performanceLanes: nextLanes,
+        laneGroups: nextGroups,
+        sourceFiles: nextSourceFiles,
+      };
+    }
+
+    case 'REMOVE_LANE_SOURCE': {
+      const { sourceFileId, groupId } = action.payload;
+      return {
+        ...state,
+        updatedAt: now,
+        performanceLanes: state.performanceLanes.filter(l => l.sourceFileId !== sourceFileId),
+        sourceFiles: state.sourceFiles.filter(sf => sf.id !== sourceFileId),
+        laneGroups: groupId
+          ? state.laneGroups.filter(g => g.groupId !== groupId)
+          : state.laneGroups,
       };
     }
 
@@ -276,38 +317,19 @@ export function lanesReducer(state: ProjectState, action: LaneAction): ProjectSt
     }
 
     case 'POPULATE_LANES_FROM_STREAMS': {
-      // Convert existing SoundStreams into PerformanceLanes so the Lanes tab
-      // can display data that was imported via the legacy (non-lanes) flow.
       if (state.performanceLanes.length > 0 || state.soundStreams.length === 0) {
         return state;
       }
-
-      const lanes: PerformanceLane[] = state.soundStreams.map((stream, i) => ({
-        id: stream.id,
-        name: stream.name,
-        sourceFileId: 'imported',
-        sourceFileName: 'Imported',
-        groupId: null,
-        orderIndex: i,
-        color: stream.color,
-        colorMode: 'overridden' as LaneColorMode,
-        events: stream.events.map((e, ei): LaneEvent => ({
-          eventId: e.eventKey || `${stream.id}-${ei}`,
-          laneId: stream.id,
-          startTime: e.startTime,
-          duration: e.duration,
-          velocity: e.velocity,
-          rawPitch: stream.originalMidiNote,
-        })),
-        isHidden: false,
-        isMuted: stream.muted,
-        isSolo: false,
-      }));
+      const lanes = buildPerformanceLanesFromStreams(state.soundStreams);
+      const sourceFiles = state.sourceFiles.length > 0
+        ? state.sourceFiles
+        : [buildLegacySourceFile(state.soundStreams)];
 
       return {
         ...state,
         updatedAt: now,
         performanceLanes: lanes,
+        sourceFiles,
       };
     }
 

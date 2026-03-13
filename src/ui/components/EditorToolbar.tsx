@@ -5,15 +5,35 @@
  * save/export, analysis stale indicator.
  */
 
+import { useState } from 'react';
 import { useProject } from '../state/ProjectContext';
 import { saveProject, exportProjectToFile } from '../persistence/projectStorage';
 import { getActiveLayout } from '../state/projectState';
 import { createEmptyLayout } from '../../types/layout';
 import { generateId } from '../../utils/idGenerator';
+import { type GenerationMode } from '../hooks/useAutoAnalysis';
 
-export function EditorToolbar() {
+interface EditorToolbarProps {
+  generateFull?: (mode?: GenerationMode) => Promise<void>;
+  generationProgress?: string | null;
+  showAnalysis?: boolean;
+  setShowAnalysis?: (show: boolean) => void;
+  showDiagnostics?: boolean;
+  setShowDiagnostics?: (show: boolean) => void;
+}
+
+export function EditorToolbar({
+  generateFull,
+  generationProgress,
+  showAnalysis,
+  setShowAnalysis,
+  showDiagnostics,
+  setShowDiagnostics
+}: EditorToolbarProps = {}) {
   const { state, dispatch, undo, redo, canUndo, canRedo } = useProject();
   const activeLayout = getActiveLayout(state);
+  const [generationMode, setGenerationMode] = useState<GenerationMode>('fast');
+
 
   const handleAddLayout = () => {
     const newLayout = createEmptyLayout(
@@ -123,9 +143,62 @@ export function EditorToolbar() {
         Export
       </button>
 
+      {/* Toggles */}
+      {(setShowAnalysis || setShowDiagnostics) && (
+        <div className="flex items-center gap-1 border-l border-gray-800 pl-3 ml-1">
+          {setShowAnalysis && (
+            <button
+              className={`px-2 py-1 text-xs rounded transition-colors ${showAnalysis ? 'bg-gray-700 text-gray-200' : 'text-gray-500 hover:bg-gray-800'}`}
+              onClick={() => setShowAnalysis(!showAnalysis)}
+            >
+              Analysis
+            </button>
+          )}
+          {setShowDiagnostics && (
+            <button
+              className={`px-2 py-1 text-xs rounded transition-colors ${showDiagnostics ? 'bg-gray-700 text-gray-200' : 'text-gray-500 hover:bg-gray-800'}`}
+              onClick={() => setShowDiagnostics(!showDiagnostics)}
+            >
+              Diagnostics
+            </button>
+          )}
+        </div>
+      )}
+
+      {/* Generate */}
+      {generateFull && (
+        <div className="flex items-center gap-1 border-l border-gray-800 pl-3 ml-1">
+          {state.isProcessing ? (
+            <span className="text-xs text-blue-400 animate-pulse px-2 py-1">
+              {generationProgress || 'Running analysis...'}
+            </span>
+          ) : (
+            <>
+              <select
+                className="bg-gray-800 border border-gray-700 text-gray-300 text-[11px] rounded px-1 py-1 cursor-pointer"
+                value={generationMode}
+                onChange={(e) => setGenerationMode(e.target.value as GenerationMode)}
+                title="Quick: fast optimization (~3s). Thorough: deep optimization (~10-15s). Auto: chooses based on complexity."
+              >
+                <option value="fast">Quick</option>
+                <option value="deep">Thorough</option>
+                <option value="auto">Auto</option>
+              </select>
+              <button
+                className="px-2 py-1 rounded text-[11px] transition-colors bg-blue-600 hover:bg-blue-500 text-white"
+                onClick={() => generateFull(generationMode)}
+                title="Generate 3 layout candidates (auto-assigns pads if none are set)"
+              >
+                Generate
+              </button>
+            </>
+          )}
+        </div>
+      )}
+
       {/* Analysis stale indicator */}
       {state.analysisStale && state.analysisResult && (
-        <span className="text-[10px] text-amber-400 px-2 py-0.5 rounded bg-amber-500/10 border border-amber-500/20">
+        <span className="text-[10px] text-amber-400 px-2 py-0.5 rounded bg-amber-500/10 border border-amber-500/20 ml-2">
           Analysis outdated
         </span>
       )}

@@ -12,7 +12,7 @@ import { OptimizerDebugPage } from './pages/OptimizerDebugPage';
 export function App() {
   return (
     <BrowserRouter>
-      <div className="min-h-screen bg-gray-950 text-gray-100 p-6">
+      <div className="min-h-screen text-[var(--foreground)] p-6">
         <Routes>
           <Route path="/" element={<ProjectLibraryPage />} />
           <Route path="/project/:id" element={<ProjectEditorPage />} />

@@ -18,6 +18,7 @@ interface LaneTimelineProps {
   searchQuery: string;
   showInactive: boolean;
   selectedEventTime?: number | null;
+  onSelectEventTime?: (time: number) => void;
   onVerticalScroll?: (scrollTop: number) => void;
 }
 
@@ -34,6 +35,7 @@ export function LaneTimeline({
   searchQuery,
   showInactive,
   selectedEventTime,
+  onSelectEventTime,
   onVerticalScroll,
 }: LaneTimelineProps) {
   const { state } = useProject();
@@ -218,11 +220,12 @@ export function LaneTimeline({
                     const x = (event.startTime - minTime) * zoom + 40;
                     const w = Math.max(event.duration * zoom, MIN_BLOCK_WIDTH);
                     const velocityOpacity = (0.4 + (event.velocity / 127) * 0.6) * (lane.isMuted ? 0.3 : 1);
+                    const isSelectedEvent = selectedEventTime === event.startTime;
 
                     return (
                       <div
                         key={event.eventId || ei}
-                        className="absolute rounded-sm"
+                        className={`absolute rounded-sm transition-all ${isSelectedEvent ? 'ring-2 ring-yellow-400/80 z-10' : 'hover:brightness-110'}`}
                         style={{
                           left: x,
                           top: 4,
@@ -230,6 +233,11 @@ export function LaneTimeline({
                           height: TRACK_HEIGHT - 8,
                           backgroundColor: lane.color,
                           opacity: velocityOpacity,
+                        }}
+                        onClick={e => {
+                          e.stopPropagation();
+                          onSelectLane(lane.id, e.metaKey || e.ctrlKey);
+                          onSelectEventTime?.(event.startTime);
                         }}
                       />
                     );
@@ -260,4 +268,3 @@ export function LaneTimeline({
     </div>
   );
 }
-

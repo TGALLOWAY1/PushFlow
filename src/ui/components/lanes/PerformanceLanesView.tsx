@@ -22,30 +22,21 @@ export function PerformanceLanesView() {
   const { state } = useProject();
   const { importFiles } = useLaneImport();
 
-  // Compute default zoom to fit the full clip in the viewport
-  const defaultZoom = useMemo(() => {
-    let maxTime = 0;
-    let minTime = Infinity;
-    for (const lane of state.performanceLanes) {
-      for (const e of lane.events) {
-        if (e.startTime < minTime) minTime = e.startTime;
-        const end = e.startTime + e.duration;
-        if (end > maxTime) maxTime = end;
-      }
-    }
-    const totalDuration = maxTime - (minTime === Infinity ? 0 : minTime);
-    if (totalDuration <= 0) return 100;
+  // Compute minimum zoom to fit exactly 4 bars in the viewport
+  const minZoom = useMemo(() => {
+    const secondsPerBeat = 60 / state.tempo;
+    const totalDuration = secondsPerBeat * 16; // 4 bars * 4 beats
 
     // Estimate available width (viewport minus sidebar, inspector, padding)
     const availableWidth = Math.max(window.innerWidth - SIDEBAR_WIDTH - INSPECTOR_WIDTH - TIMELINE_PADDING, 400);
-    const fitZoom = availableWidth / totalDuration;
-    // Clamp to toolbar's slider range [20, 400]
-    return Math.max(20, Math.min(400, Math.round(fitZoom)));
-  }, [state.performanceLanes]);
+    return Math.max(20, Math.round(availableWidth / totalDuration));
+  }, [state.tempo]);
 
   // Local UI state
   const [selectedLaneIds, setSelectedLaneIds] = useState<Set<string>>(new Set());
-  const [zoom, setZoom] = useState(defaultZoom); // pixels per second
+  const [currentZoom, setCurrentZoom] = useState(minZoom); // pixels per second
+  const zoom = Math.max(currentZoom, minZoom);
+  const setZoom = useCallback((z: number) => setCurrentZoom(Math.max(z, minZoom)), [minZoom]);
   const [scrollLeft, setScrollLeft] = useState(0);
   const [showInactive, setShowInactive] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
@@ -134,6 +125,7 @@ export function PerformanceLanesView() {
       <div className="space-y-0">
         <LaneToolbar
           zoom={zoom}
+          minZoom={minZoom}
           onZoomChange={setZoom}
           showInactive={showInactive}
           onToggleShowInactive={() => setShowInactive(!showInactive)}
@@ -169,6 +161,7 @@ export function PerformanceLanesView() {
     <div className="flex flex-col h-full">
       <LaneToolbar
         zoom={zoom}
+        minZoom={minZoom}
         onZoomChange={setZoom}
         showInactive={showInactive}
         onToggleShowInactive={() => setShowInactive(!showInactive)}

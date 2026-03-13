@@ -245,10 +245,23 @@ export class BeamSolver implements SolverStrategy {
     const { stiffness, restingPose } = config;
 
     for (const hand of ['left', 'right'] as const) {
+      // Deduplicate pads to prevent multiple fingers on the same pad
+      const uniquePads: PadCoord[] = [];
+      const seenPads = new Set<string>();
+      for (const pad of group.activePads) {
+        const key = `${pad.row},${pad.col}`;
+        if (!seenPads.has(key)) {
+          seenPads.add(key);
+          uniquePads.push(pad);
+        }
+      }
+
+      if (uniquePads.length === 0 || uniquePads.length > 5) continue;
+
       const prevPose = hand === 'left' ? node.leftPose : node.rightPose;
       const restPose = hand === 'left' ? restingPose.left : restingPose.right;
 
-      const gripResults = generateValidGripsWithTier(group.activePads, hand);
+      const gripResults = generateValidGripsWithTier(uniquePads, hand);
 
       for (const gripResult of gripResults) {
         const { pose: grip, isFallback, tier } = gripResult;
@@ -273,7 +286,21 @@ export class BeamSolver implements SolverStrategy {
         // Diagnostic-only costs (computed for display, not in beam score)
         const prevAssignments = node.assignments.map(a => ({ hand: a.hand, finger: a.finger }));
         const gripFingers = Object.keys(grip.fingers) as FingerType[];
-        const currentAssignments = gripFingers.slice(0, group.notes.length).map(finger => ({ hand, finger }));
+        
+        // Map notes to the exact finger assigned to their target pad
+        const resolvedFingers: FingerType[] = [];
+        for (const pos of group.positions) {
+          let assignedFinger: FingerType | null = null;
+          for (const [f, coord] of Object.entries(grip.fingers)) {
+            if (coord.x === pos.col && coord.y === pos.row) {
+              assignedFinger = f as FingerType;
+              break;
+            }
+          }
+          resolvedFingers.push(assignedFinger ?? gripFingers[0]);
+        }
+
+        const currentAssignments = resolvedFingers.map(finger => ({ hand, finger }));
         const alternationCost = calculateAlternationCost(prevAssignments, currentAssignments, rawTimeDelta);
 
         const newLeftCount = node.leftCount + (hand === 'left' ? group.notes.length : 0);
@@ -317,7 +344,7 @@ export class BeamSolver implements SolverStrategy {
         };
         const displayStepCost = combineComponents(stepComponents);
 
-        if (gripFingers.length === 0 || gripFingers.length < group.notes.length) continue;
+        if (gripFingers.length === 0 || gripFingers.length < uniquePads.length) continue;
 
         const assignments: NoteAssignment[] = [];
         const n = group.notes.length;
@@ -339,7 +366,7 @@ export class BeamSolver implements SolverStrategy {
             noteNumber: group.notes[i].noteNumber,
             startTime: group.notes[i].startTime,
             hand,
-            finger: gripFingers[i],
+            finger: resolvedFingers[i],
             grip,
             cost: costPerNote,
             row: group.positions[i].row,
@@ -373,15 +400,26 @@ export class BeamSolver implements SolverStrategy {
     nextGroup?: PerformanceGroup | null
   ): BeamNode[] {
     const children: BeamNode[] = [];
-    const pads = group.activePads;
-    if (pads.length < 2) return children;
+
+    // Deduplicate pads
+    const uniquePads: PadCoord[] = [];
+    const seenPads = new Set<string>();
+    for (const pad of group.activePads) {
+      const key = `${pad.row},${pad.col}`;
+      if (!seenPads.has(key)) {
+        seenPads.add(key);
+        uniquePads.push(pad);
+      }
+    }
+
+    if (uniquePads.length < 2) return children;
 
     const rawTimeDelta = group.timestamp - prevTimestamp;
     const isFirstGroup = node.depth === 0 || prevTimestamp === 0;
     const timeDelta = isFirstGroup ? Math.max(rawTimeDelta, 1.0) : rawTimeDelta;
     const { stiffness, restingPose } = config;
 
-    const sortedPads = [...pads].sort((a, b) => a.col - b.col);
+    const sortedPads = [...uniquePads].sort((a, b) => a.col - b.col);
     const midpoint = Math.ceil(sortedPads.length / 2);
     const leftPads = sortedPads.slice(0, midpoint);
     const rightPads = sortedPads.slice(midpoint);
@@ -400,11 +438,11 @@ export class BeamSolver implements SolverStrategy {
 
     for (const leftResult of leftGripResults) {
       const leftFingers = Object.keys(leftResult.pose.fingers) as FingerType[];
-      if (leftFingers.length < leftNoteIndices.length) continue;
+      if (leftFingers.length < leftPads.length) continue;
 
       for (const rightResult of rightGripResults) {
         const rightFingers = Object.keys(rightResult.pose.fingers) as FingerType[];
-        if (rightFingers.length < rightNoteIndices.length) continue;
+        if (rightFingers.length < rightPads.length) continue;
 
         const leftTransition = calculateTransitionCost(node.leftPose, leftResult.pose, timeDelta);
         const rightTransition = calculateTransitionCost(node.rightPose, rightResult.pose, timeDelta);
@@ -431,13 +469,32 @@ export class BeamSolver implements SolverStrategy {
             ? RELAXED_GRIP_PENALTY
             : 0;
 
+        // Map notes to exact fingers based on their target pad coordinates
+        const resolvedLeftFingers: FingerType[] = [];
+        for (const i of leftNoteIndices) {
+          const pos = group.positions[i];
+          let assignedFinger: FingerType | null = null;
+          for (const [f, coord] of Object.entries(leftResult.pose.fingers)) {
+            if (coord.x === pos.col && coord.y === pos.row) { assignedFinger = f as FingerType; break; }
+          }
+          resolvedLeftFingers.push(assignedFinger ?? Object.keys(leftResult.pose.fingers)[0] as FingerType);
+        }
+
+        const resolvedRightFingers: FingerType[] = [];
+        for (const i of rightNoteIndices) {
+          const pos = group.positions[i];
+          let assignedFinger: FingerType | null = null;
+          for (const [f, coord] of Object.entries(rightResult.pose.fingers)) {
+            if (coord.x === pos.col && coord.y === pos.row) { assignedFinger = f as FingerType; break; }
+          }
+          resolvedRightFingers.push(assignedFinger ?? Object.keys(rightResult.pose.fingers)[0] as FingerType);
+        }
+
         // Diagnostic-only costs
         const prevAssignments = node.assignments.map(a => ({ hand: a.hand, finger: a.finger }));
-        const leftFingersForCost = Object.keys(leftResult.pose.fingers) as FingerType[];
-        const rightFingersForCost = Object.keys(rightResult.pose.fingers) as FingerType[];
         const currentAssignments: Array<{ hand: 'left' | 'right'; finger: FingerType }> = [
-          ...leftNoteIndices.map((_, j) => ({ hand: 'left' as const, finger: leftFingersForCost[j] })),
-          ...rightNoteIndices.map((_, j) => ({ hand: 'right' as const, finger: rightFingersForCost[j] })),
+          ...resolvedLeftFingers.map(finger => ({ hand: 'left' as const, finger })),
+          ...resolvedRightFingers.map(finger => ({ hand: 'right' as const, finger })),
         ];
         const alternationCost = calculateAlternationCost(prevAssignments, currentAssignments, rawTimeDelta);
 
@@ -509,7 +566,7 @@ export class BeamSolver implements SolverStrategy {
             noteNumber: group.notes[i].noteNumber,
             startTime: group.notes[i].startTime,
             hand: 'left',
-            finger: leftFingers[j],
+            finger: resolvedLeftFingers[j],
             grip: leftResult.pose,
             cost: costPerNote,
             row: group.positions[i].row,
@@ -525,7 +582,7 @@ export class BeamSolver implements SolverStrategy {
             noteNumber: group.notes[i].noteNumber,
             startTime: group.notes[i].startTime,
             hand: 'right',
-            finger: rightFingers[j],
+            finger: resolvedRightFingers[j],
             grip: rightResult.pose,
             cost: costPerNote,
             row: group.positions[i].row,

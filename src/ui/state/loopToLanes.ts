@@ -15,6 +15,15 @@ export interface LoopConversionResult {
   group: LaneGroup;
 }
 
+export interface LoopConversionOptions {
+  sourceFileId?: string;
+  sourceFileName?: string;
+  groupId?: string;
+  groupName?: string;
+  laneIdPrefix?: string;
+  preserveLaneIds?: boolean;
+}
+
 /**
  * Convert a LoopState into PerformanceLanes ready for IMPORT_LANES dispatch.
  *
@@ -24,9 +33,10 @@ export interface LoopConversionResult {
 export function convertLoopToPerformanceLanes(
   loopState: LoopState,
   sourceLabel: string,
+  options: LoopConversionOptions = {},
 ): LoopConversionResult {
-  const sourceFileId = generateId('src');
-  const groupId = generateId('grp');
+  const sourceFileId = options.sourceFileId ?? generateId('src');
+  const groupId = options.groupId ?? generateId('grp');
   const stepDur = stepDuration(loopState.config);
   const steps = totalSteps(loopState.config);
 
@@ -38,7 +48,9 @@ export function convertLoopToPerformanceLanes(
   });
 
   const lanes: PerformanceLane[] = activeLanes.map((loopLane, i) => {
-    const laneId = generateId('lane');
+    const laneId = options.preserveLaneIds
+      ? `${options.laneIdPrefix ?? ''}${loopLane.id}`
+      : generateId('lane');
     const events: LaneEvent[] = [];
 
     for (let step = 0; step < steps; step++) {
@@ -60,7 +72,7 @@ export function convertLoopToPerformanceLanes(
       id: laneId,
       name: loopLane.name,
       sourceFileId,
-      sourceFileName: `Loop: ${sourceLabel}`,
+      sourceFileName: options.sourceFileName ?? `Loop: ${sourceLabel}`,
       groupId,
       orderIndex: i,
       color: loopLane.color,
@@ -74,7 +86,7 @@ export function convertLoopToPerformanceLanes(
 
   const group: LaneGroup = {
     groupId,
-    name: sourceLabel,
+    name: options.groupName ?? sourceLabel,
     color: activeLanes[0]?.color ?? '#3b82f6',
     orderIndex: 0,
     isCollapsed: false,
@@ -82,7 +94,7 @@ export function convertLoopToPerformanceLanes(
 
   const sourceFile: SourceFile = {
     id: sourceFileId,
-    fileName: `Loop: ${sourceLabel}`,
+    fileName: options.sourceFileName ?? `Loop: ${sourceLabel}`,
     importedAt: new Date().toISOString(),
     laneCount: lanes.length,
   };
