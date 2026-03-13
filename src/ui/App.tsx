@@ -7,6 +7,7 @@
 import { BrowserRouter, Routes, Route } from 'react-router-dom';
 import { ProjectLibraryPage } from './pages/ProjectLibraryPage';
 import { ProjectEditorPage } from './pages/ProjectEditorPage';
+import { OptimizerDebugPage } from './pages/OptimizerDebugPage';
 
 export function App() {
   return (
@@ -15,6 +16,7 @@ export function App() {
         <Routes>
           <Route path="/" element={<ProjectLibraryPage />} />
           <Route path="/project/:id" element={<ProjectEditorPage />} />
+          <Route path="/optimizer-debug" element={<OptimizerDebugPage />} />
         </Routes>
       </div>
     </BrowserRouter>
