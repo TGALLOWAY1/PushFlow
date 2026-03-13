@@ -220,7 +220,7 @@ function EditorContent() {
         </div>
 
         {/* Right: Side panel */}
-        <div className="flex-1 min-w-0 space-y-3">
+        <div className="flex-1 min-w-0 space-y-3 overflow-y-auto max-h-[calc(100vh-120px)]">
           {/* Voice Palette */}
           <div className="p-3 rounded-lg bg-gray-800/30 border border-gray-700">
             <VoicePalette />

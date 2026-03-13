@@ -5,7 +5,7 @@
  * Options: set finger constraint, remove voice, view reachability.
  */
 
-import { useEffect, useRef } from 'react';
+import { useEffect, useRef, useState, useLayoutEffect } from 'react';
 import { useProject } from '../state/ProjectContext';
 import { getActiveLayout } from '../state/projectState';
 
@@ -37,6 +37,23 @@ export function PadContextMenu({ padKey, x, y, onClose }: PadContextMenuProps) {
   const voice = layout?.padToVoice[padKey];
   const currentConstraint = layout?.fingerConstraints[padKey];
 
+  // Clamp position to viewport bounds
+  const [position, setPosition] = useState({ left: x, top: y });
+  useLayoutEffect(() => {
+    const el = menuRef.current;
+    if (!el) return;
+    const rect = el.getBoundingClientRect();
+    const vw = window.innerWidth;
+    const vh = window.innerHeight;
+    let left = x;
+    let top = y;
+    if (x + rect.width > vw - 8) left = vw - rect.width - 8;
+    if (y + rect.height > vh - 8) top = vh - rect.height - 8;
+    if (left < 8) left = 8;
+    if (top < 8) top = 8;
+    setPosition({ left, top });
+  }, [x, y]);
+
   // Close on outside click
   useEffect(() => {
     const handler = (e: MouseEvent) => {
@@ -61,7 +78,7 @@ export function PadContextMenu({ padKey, x, y, onClose }: PadContextMenuProps) {
     <div
       ref={menuRef}
       className="fixed z-50 bg-gray-900 border border-gray-700 rounded-lg shadow-xl py-1 min-w-[160px]"
-      style={{ left: x, top: y }}
+      style={{ left: position.left, top: position.top }}
     >
       {/* Header */}
       <div className="px-3 py-1.5 text-[10px] text-gray-500 border-b border-gray-800">

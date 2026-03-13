@@ -236,7 +236,7 @@ export function InteractiveGrid({ assignments, selectedEventIndex, onEventClick,
         <div
           key={padKey}
           className={`
-            relative flex flex-col items-center justify-center
+            group relative flex flex-col items-center justify-center
             w-14 h-14 rounded-lg text-[10px] font-mono leading-tight
             border-2 transition-all duration-100 select-none
             ${isSelected ? 'ring-2 ring-yellow-400/60 z-10 scale-105' : ''}
@@ -290,14 +290,11 @@ export function InteractiveGrid({ assignments, selectedEventIndex, onEventClick,
                   {constraint}
                 </span>
               )}
-              {/* Remove button (visible on hover via CSS) */}
+              {/* Remove button (visible on hover via parent group) */}
               <button
                 className="absolute top-0 left-0 w-4 h-4 flex items-center justify-center
                            text-[8px] text-red-400 bg-red-500/20 rounded-br opacity-0
-                           hover:opacity-100 transition-opacity"
-                style={{ opacity: undefined }}
-                onMouseEnter={e => (e.currentTarget.style.opacity = '1')}
-                onMouseLeave={e => (e.currentTarget.style.opacity = '0')}
+                           group-hover:opacity-100 transition-opacity"
                 onClick={e => {
                   e.stopPropagation();
                   handleRemovePad(padKey);

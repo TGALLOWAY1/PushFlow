@@ -180,6 +180,7 @@ export function useAutoAnalysis() {
         dispatch({ type: 'SET_PROCESSING', payload: false });
       } catch (err) {
         if (!abortRef.current) {
+          dispatch({ type: 'SET_PROCESSING', payload: false });
           dispatch({ type: 'SET_ERROR', payload: err instanceof Error ? err.message : 'Analysis failed' });
         }
       }
@@ -197,8 +198,8 @@ export function useAutoAnalysis() {
     const layout = getActiveLayout(state);
     if (activeStreams.length === 0 || !layout) return;
 
-    dispatch({ type: 'SET_PROCESSING', payload: true });
     dispatch({ type: 'SET_ERROR', payload: null });
+    dispatch({ type: 'SET_PROCESSING', payload: true });
 
     try {
       const performance = getActivePerformance(state);
@@ -231,6 +232,7 @@ export function useAutoAnalysis() {
         dispatch({ type: 'SET_ANALYSIS_RESULT', payload: candidates[0] });
       }
     } catch (err) {
+      dispatch({ type: 'SET_PROCESSING', payload: false });
       dispatch({ type: 'SET_ERROR', payload: err instanceof Error ? err.message : 'Generation failed' });
     }
   }, [state, dispatch]);
