@@ -22,7 +22,12 @@ import { type Layout } from '../../types/layout';
 import { type CandidateSolution, type CandidateMetadata } from '../../types/candidateSolution';
 import { type NaturalHandPose } from '../../types/ergonomicPrior';
 import { type EngineConfiguration } from '../../types/engineConfig';
-import { type SolverConfig } from '../../types/engineConfig';
+import {
+  type SolverConfig,
+  type OptimizationMode,
+  FAST_ANNEALING_CONFIG,
+  DEEP_ANNEALING_CONFIG,
+} from '../../types/engineConfig';
 import { type Section } from '../../types/performanceStructure';
 import { type FingerType } from '../../types/fingerModel';
 import { seedLayoutFromPose0 } from '../mapping/seedFromPose';
@@ -39,8 +44,17 @@ import { generateId } from '../../utils/idGenerator';
 export interface CandidateGenerationConfig {
   /** Number of candidates to generate. Default: 3. */
   count?: number;
-  /** Whether to run annealing optimization (slower but better). Default: false. */
+  /**
+   * Whether to run annealing optimization (slower but better). Default: false.
+   * @deprecated Use `optimizationMode` instead. If `optimizationMode` is set, this is ignored.
+   */
   useAnnealing?: boolean;
+  /**
+   * Optimization mode: 'fast' (annealing with conservative budget) or 'deep'
+   * (annealing with restarts and larger budget). When set, overrides `useAnnealing`.
+   * Default: undefined (falls back to `useAnnealing` for backward compatibility).
+   */
+  optimizationMode?: OptimizationMode;
   /** Base engine configuration. */
   engineConfig: EngineConfiguration;
   /** Instrument configuration. */
@@ -287,18 +301,29 @@ export async function generateCandidates(
     let executionPlan;
     let finalLayout = layout;
 
-    if (config.useAnnealing && Object.keys(layout.padToVoice).length > 0) {
+    // Determine whether to use annealing and which config
+    // optimizationMode takes precedence over legacy useAnnealing flag
+    const shouldAnneal = config.optimizationMode !== undefined
+      ? true  // Both 'fast' and 'deep' modes use annealing
+      : (config.useAnnealing ?? false);
+
+    const annealingConfig = config.optimizationMode === 'deep'
+      ? DEEP_ANNEALING_CONFIG
+      : FAST_ANNEALING_CONFIG;
+
+    if (shouldAnneal && Object.keys(layout.padToVoice).length > 0) {
       // Run annealing to optimize layout + execution jointly
       const solverConfig: SolverConfig = {
         instrumentConfig: config.instrumentConfig,
         layout,
         seed: strategy.seed,
+        annealingConfig,
       };
       const solver = createAnnealingSolver(solverConfig);
       executionPlan = await solver.solve(performance, candidateEngineConfig);
       finalLayout = solver.getBestLayout() ?? layout;
     } else {
-      // Run beam search only (faster)
+      // Run beam search only (no annealing requested or empty layout)
       const solverConfig: SolverConfig = {
         instrumentConfig: config.instrumentConfig,
         layout: Object.keys(layout.padToVoice).length > 0 ? layout : null,
@@ -316,6 +341,10 @@ export async function generateCandidates(
       strategy: strategy.name,
       seed: strategy.seed,
       generationTimeMs: Date.now() - startTime,
+      optimizationMode: config.optimizationMode,
+      optimizationSummary: config.optimizationMode
+        ? `${config.optimizationMode === 'deep' ? 'Deep' : 'Quick'} optimization (${annealingConfig.iterations} iterations, ${annealingConfig.restartCount} restarts)`
+        : undefined,
     };
 
     candidates.push({
