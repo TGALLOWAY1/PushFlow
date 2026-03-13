@@ -211,10 +211,27 @@ EventAnalysisPanel (three-column layout)
 
 **Current State:** Export only supports JSON project export. No Ableton drum rack export.
 
+**V1 Reference:** `Version1/adg_remapper.py` contains a working `DrumRackRemapper` class that:
+- Loads `.adg` files (gzip-compressed XML)
+- Finds drum rack branches by chain name (e.g., "Kick", "Snare")
+- Remaps `ReceivingNote` (inverted: `128 - targetNote`) and `KeyRange` (direct: `Min`/`Max` set to target note)
+- Writes the modified XML back as gzipped `.adg`
+- Tested with fixture racks in `Version1/fixtures/drum_racks/` (empty rack, single kick, dual kit)
+
+**Export Pipeline (from V1):**
+1. User finalizes layout in PushFlow (sound → pad mapping)
+2. Pad coordinates → MIDI note number: `note = row * 8 + col + bottomLeftNote`
+3. Build mapping dict: `{ chainName: targetMidiNote }` for each sound
+4. `DrumRackRemapper.remap_rack(source_adg, output_adg, mapping_dict)` patches the drum rack XML
+5. Optionally re-export MIDI with pitches remapped to match new layout
+
+**This Python pipeline needs to be ported to TypeScript/browser** or exposed as a downloadable script. The `.adg` format is gzip+XML, which is feasible in-browser using `pako` (gzip) + browser XML APIs.
+
 | # | Issue | Severity |
 |---|-------|----------|
-| X1 | **No Ableton drum rack export** — Cannot export pad layout as an Ableton drum rack with remapped MIDI. | High |
+| X1 | **No Ableton drum rack export** — V1's `adg_remapper.py` solves this but hasn't been ported to the web app. | High |
 | X2 | **No MIDI re-export** — Cannot export MIDI with pitches remapped to match the optimized layout coordinates. | High |
+| X3 | **No source drum rack import** — User needs to provide their original `.adg` so PushFlow can remap it. No upload UI exists. | High |
 
 ### 7. Navigation and Information Hierarchy
 
@@ -262,7 +279,7 @@ EventAnalysisPanel (three-column layout)
 | H5 | **Fix side panel overflow** | No scroll container for stacked panels. | Add `overflow-y-auto max-h-[calc(100vh-200px)]`. |
 | H6 | **Add progress indicator for generation** | Only "Analyzing..." pulse during long operations. | Show step counter ("Evaluating candidate 2 of 3..."). |
 | H7 | **Fix pad remove button opacity** | CSS/style conflict makes button always visible. | Remove inline style; use CSS-only hover. |
-| H8 | **Add Ableton export** | No way to get the layout onto actual hardware. | Export drum rack XML + remapped MIDI. |
+| H8 | **Add Ableton export** | No way to get the layout onto actual hardware. | Port `Version1/adg_remapper.py` logic to TypeScript. User uploads source `.adg`, PushFlow remaps `ReceivingNote` (128-note) and `KeyRange` per finalized layout, exports modified `.adg` + remapped MIDI. Use `pako` for gzip in browser. |
 
 ---
 
@@ -275,7 +292,7 @@ EventAnalysisPanel (three-column layout)
 | E1 | **V1-style event analysis panel** | Step through events seeing finger patterns and movement arrows. The core feature. | Port the three-column layout from V1: event list (left), onion-skin grid (center), transition metrics (right). |
 | E2 | **Cross-song layout templates** | Standardized layouts across songs (L=drums, R=melodic). | Add "layout template" system where users define hand-zone conventions that persist across projects. |
 | E3 | **Musical pattern generation** | Generate novel playable rhythmic patterns as composition seeds. | Extend the existing pattern engine to generate rhythmically coherent MIDI sequences with optimized layouts. |
-| E4 | **Ableton drum rack export** | Transfer optimized layout directly to hardware. | Generate Ableton .adg (drum rack) XML + remapped MIDI file. |
+| E4 | **Ableton drum rack export** | Transfer optimized layout directly to hardware. | Port V1's `adg_remapper.py` (`DrumRackRemapper` class) to TypeScript. Add UI for uploading source `.adg` drum rack. Remap `ReceivingNote` (128-note) + `KeyRange` per layout. Export modified `.adg` (gzip+XML via pako) + MIDI with remapped pitches. Test fixtures in `Version1/fixtures/drum_racks/`. |
 | E5 | **Practice loop with tempo control** | Slow down difficult transitions for practice. | Port V1's PracticeLoopControls with speed adjustment (0.75x, 0.85x, 1.0x, 1.1x). |
 
 ### Medium Impact
