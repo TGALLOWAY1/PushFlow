@@ -373,6 +373,67 @@ function applyMultiMove(
   };
 }
 
+/**
+ * Zone transfer mutation: moves a voice from one hand zone to the opposite zone.
+ *
+ * Left zone = cols 0-3, Right zone = cols 4-7.
+ * Picks a random occupied pad, finds empty pads in the opposite zone,
+ * and moves the voice there. This encourages hand-balance exploration
+ * during deep optimization by crossing the zone boundary.
+ *
+ * Falls back to applyRandomMutation if no valid transfer target exists.
+ */
+export function applyZoneTransferMutation(layout: Layout, rng: Rng = Math.random): Layout {
+  const occupiedPads = getOccupiedPads(layout);
+  if (occupiedPads.length === 0) return layout;
+
+  // Pick a random occupied pad as the source
+  const sourcePad = occupiedPads[Math.floor(rng() * occupiedPads.length)];
+  const sourceZone = sourcePad.col < 4 ? 'left' : 'right';
+
+  // Find empty pads in the opposite zone
+  const emptyPads = getEmptyPads(layout);
+  const oppositeZoneEmpty = emptyPads.filter(p =>
+    sourceZone === 'left' ? p.col >= 4 : p.col < 4
+  );
+
+  if (oppositeZoneEmpty.length === 0) {
+    // No empty pads in opposite zone — fall back to standard mutation
+    return applyRandomMutation(layout, rng);
+  }
+
+  // Pick a random empty pad in the opposite zone
+  const targetPad = oppositeZoneEmpty[Math.floor(rng() * oppositeZoneEmpty.length)];
+
+  // Move the voice: replicates applyMoveMutation logic inline since it's private
+  const sourceKey = padKey(sourcePad.row, sourcePad.col);
+  const targetKey = padKey(targetPad.row, targetPad.col);
+
+  const voice = layout.padToVoice[sourceKey];
+  if (!voice) return layout;
+
+  const newPadToVoice = { ...layout.padToVoice };
+  newPadToVoice[targetKey] = voice;
+  delete newPadToVoice[sourceKey];
+
+  const newFingerConstraints = { ...layout.fingerConstraints };
+  const constraint = layout.fingerConstraints[sourceKey];
+
+  if (constraint !== undefined) {
+    newFingerConstraints[targetKey] = constraint;
+    delete newFingerConstraints[sourceKey];
+  } else {
+    delete newFingerConstraints[targetKey];
+  }
+
+  return {
+    ...layout,
+    padToVoice: newPadToVoice,
+    fingerConstraints: newFingerConstraints,
+    scoreCache: null,
+  };
+}
+
 function getRandomElement<T>(array: T[], rng: Rng = Math.random): T {
   return array[Math.floor(rng() * array.length)];
 }

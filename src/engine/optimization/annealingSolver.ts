@@ -5,10 +5,9 @@
  * and accepting better or probabilistically worse solutions based on temperature.
  * Uses Beam Search as the cost evaluation function.
  *
- * Ported from Version1/src/engine/solvers/AnnealingSolver.ts with canonical terminology:
- * - GridMapping → Layout, .cells → .padToVoice
- * - EngineResult → ExecutionPlanResult
- * - debugEvents → fingerAssignments
+ * Supports configurable parameters via AnnealingConfig:
+ * - Fast mode: single trajectory, conservative budget (default)
+ * - Deep mode: multiple restarts, larger budget, wider beam
  */
 
 import { type Performance } from '../../types/performance';
@@ -18,47 +17,19 @@ import { type FingerType } from '../../types/fingerModel';
 import {
   type ExecutionPlanResult,
   type AnnealingIterationSnapshot,
+  type SolverTelemetry,
 } from '../../types/executionPlan';
-import { type SolverConfig, type NeutralPadPositions } from '../../types/engineConfig';
+import {
+  type SolverConfig,
+  type NeutralPadPositions,
+  type AnnealingConfig,
+  FAST_ANNEALING_CONFIG,
+} from '../../types/engineConfig';
 import { type SolverStrategy, type SolverType } from '../solvers/types';
 import { createBeamSolver } from '../solvers/beamSolver';
-import { applyRandomMutation } from './mutationService';
+import { applyRandomMutation, applyZoneTransferMutation } from './mutationService';
 import { computeMappingCoverage } from '../mapping/mappingCoverage';
 import { createSeededRng } from '../../utils/seededRng';
-
-// ============================================================================
-// Simulated Annealing Configuration
-// ============================================================================
-
-/** Initial temperature — higher values allow more exploration early on. */
-const INITIAL_TEMP = 500;
-
-/**
- * Cooling rate applied each iteration (close to 1.0 = slow cooling).
- * With 3000 iterations: final temp = 500 × 0.997^3000 ≈ 0.56
- * This keeps meaningful exploration longer than the previous 0.99 × 1000 schedule.
- */
-const COOLING_RATE = 0.997;
-
-/**
- * Number of iterations to run the annealing loop.
- * Increased from 1000 → 3000 to explore more of the layout space.
- * With 10-20 occupied pads on a 64-cell grid, single-pad mutations
- * need sufficient iterations to discover non-local improvements.
- */
-const ITERATIONS = 3000;
-
-/**
- * Beam width for fast cost evaluation during annealing.
- * Increased from 5 → 12 to reduce noise in the cost function used
- * to guide annealing acceptance decisions. Width 5 was too narrow —
- * layouts that appear poor at width 5 may be good at width 50,
- * creating unreliable gradients for the annealing search.
- */
-const FAST_BEAM_WIDTH = 12;
-
-/** Beam width for final high-quality evaluation. */
-const FINAL_BEAM_WIDTH = 50;
 
 // ============================================================================
 // AnnealingSolver Implementation
@@ -69,7 +40,7 @@ const FINAL_BEAM_WIDTH = 50;
  *
  * Implements the SolverStrategy interface for pluggable solver support.
  * Optimizes Layout by mutating pad assignments and accepting solutions
- * based on the Metropolis criterion.
+ * based on the Metropolis criterion. Supports configurable restarts.
  */
 export class AnnealingSolver implements SolverStrategy {
   public readonly name = 'Simulated Annealing';
@@ -81,12 +52,14 @@ export class AnnealingSolver implements SolverStrategy {
   private neutralPadPositionsOverride: NeutralPadPositions | null = null;
   private bestLayout: Layout | null = null;
   private seed: number;
+  private annealingConfig: AnnealingConfig;
 
   constructor(config: SolverConfig) {
     this.instrumentConfig = config.instrumentConfig;
     this.initialLayout = config.layout ?? null;
     this.neutralPadPositionsOverride = config.neutralPadPositionsOverride ?? null;
     this.seed = config.seed ?? Math.floor(Math.random() * 0x7fffffff);
+    this.annealingConfig = config.annealingConfig ?? FAST_ANNEALING_CONFIG;
   }
 
   /**
@@ -161,16 +134,36 @@ export class AnnealingSolver implements SolverStrategy {
     };
   }
 
+  /** Deep-copy a Layout to prevent shared mutation. */
+  private deepCopyLayout(layout: Layout): Layout {
+    return {
+      ...layout,
+      padToVoice: { ...layout.padToVoice },
+      fingerConstraints: { ...layout.fingerConstraints },
+    };
+  }
+
+  /**
+   * Applies a mutation, choosing between standard and zone transfer
+   * based on the config's useZoneTransfer flag.
+   */
+  private applyMutation(layout: Layout, rng: () => number): Layout {
+    if (this.annealingConfig.useZoneTransfer && rng() < 0.16) {
+      return applyZoneTransferMutation(layout, rng);
+    }
+    return applyRandomMutation(layout, rng);
+  }
+
   /**
    * Solves the performance optimization problem using Simulated Annealing.
    *
    * The algorithm:
    * 1. Starts with the current Layout
-   * 2. Iteratively mutates the layout
-   * 3. Evaluates cost using fast Beam Search
+   * 2. Runs restartCount+1 SA trajectories (reheating each time)
+   * 3. Each trajectory mutates the layout and evaluates cost via beam search
    * 4. Accepts better solutions or probabilistically accepts worse ones
    * 5. Cools temperature each iteration
-   * 6. Runs final high-quality Beam Search on best layout
+   * 6. After all restarts, runs final high-quality Beam Search on best layout
    */
   public async solve(
     performance: Performance,
@@ -181,18 +174,20 @@ export class AnnealingSolver implements SolverStrategy {
       throw new Error('AnnealingSolver requires an initial Layout. Cannot optimize an empty layout.');
     }
 
+    const ac = this.annealingConfig;
+    const iterations = Math.max(1, ac.iterations);
+    const restartCount = Math.max(0, ac.restartCount);
+    const startWallClock = Date.now();
+
     // Deep copy initial layout
-    let currentLayout: Layout = {
-      ...this.initialLayout,
-      padToVoice: { ...this.initialLayout.padToVoice },
-      fingerConstraints: { ...this.initialLayout.fingerConstraints },
-    };
+    let currentLayout = this.deepCopyLayout(this.initialLayout);
 
     // Calculate initial cost
     const initialEvaluation = await this.evaluateLayoutCost(
-      currentLayout, performance, config, FAST_BEAM_WIDTH
+      currentLayout, performance, config, ac.fastBeamWidth
     );
     let currentCost = initialEvaluation.cost;
+    const initialCost = currentCost;
 
     // Fail early if initial layout is invalid
     if (
@@ -205,130 +200,187 @@ export class AnnealingSolver implements SolverStrategy {
       );
     }
 
-    // Track the best layout found
-    let bestLayout: Layout = {
-      ...currentLayout,
-      padToVoice: { ...currentLayout.padToVoice },
-      fingerConstraints: { ...currentLayout.fingerConstraints },
-    };
-    let bestCost = currentCost;
+    // Track the global best layout across all restarts
+    let globalBestLayout = this.deepCopyLayout(currentLayout);
+    let globalBestCost = currentCost;
 
     const rng = createSeededRng(this.seed);
-    let currentTemp = INITIAL_TEMP;
     const annealingTrace: AnnealingIterationSnapshot[] = [];
 
-    // The Annealing Loop
-    for (let step = 0; step < ITERATIONS; step++) {
-      const candidateLayout = applyRandomMutation(currentLayout, rng);
+    // Telemetry counters
+    let totalAccepted = 0;
+    let totalRejected = 0;
+    let totalInvalid = 0;
+    let improvementCount = 0;
+    const restartBestCosts: number[] = [];
+    const totalIterations = iterations * (restartCount + 1);
+    const costAtMilestones = { pct25: 0, pct50: 0, pct75: 0, pct100: 0 };
+    let globalStep = 0;
 
-      const candidateEvaluation = await this.evaluateLayoutCost(
-        candidateLayout, performance, config, FAST_BEAM_WIDTH
-      );
-      const candidateCost = candidateEvaluation.cost;
-
-      const candidateInvalid =
-        !Number.isFinite(candidateCost) || candidateCost === Number.POSITIVE_INFINITY;
-
-      let accepted = false;
-      let acceptanceProbability: number | undefined = undefined;
-
-      if (candidateInvalid) {
-        accepted = false;
+    // ====================================================================
+    // Restart Loop
+    // ====================================================================
+    for (let restart = 0; restart <= restartCount; restart++) {
+      // Reset for this restart
+      if (restart === 0) {
+        currentLayout = this.deepCopyLayout(this.initialLayout);
+        currentCost = initialCost;
       } else {
-        const delta = candidateCost - currentCost;
-        if (delta < 0) {
-          accepted = true;
-        } else if (delta > 0 && Number.isFinite(currentCost) && currentCost > 0) {
-          acceptanceProbability = Math.exp(-delta / currentTemp);
-          accepted = rng() < acceptanceProbability;
+        // Start each restart from the global best found so far
+        currentLayout = this.deepCopyLayout(globalBestLayout);
+        currentCost = globalBestCost;
+      }
+
+      let currentTemp = ac.initialTemp;
+
+      // ================================================================
+      // SA Iteration Loop
+      // ================================================================
+      for (let step = 0; step < iterations; step++) {
+        const candidateLayout = this.applyMutation(currentLayout, rng);
+
+        const candidateEvaluation = await this.evaluateLayoutCost(
+          candidateLayout, performance, config, ac.fastBeamWidth
+        );
+        const candidateCost = candidateEvaluation.cost;
+
+        const candidateInvalid =
+          !Number.isFinite(candidateCost) || candidateCost === Number.POSITIVE_INFINITY;
+
+        let accepted = false;
+        let acceptanceProbability: number | undefined = undefined;
+
+        if (candidateInvalid) {
+          accepted = false;
+          totalInvalid++;
         } else {
-          accepted = true;
+          const delta = candidateCost - currentCost;
+          if (delta < 0) {
+            accepted = true;
+          } else if (delta > 0 && Number.isFinite(currentCost) && currentCost > 0) {
+            acceptanceProbability = Math.exp(-delta / currentTemp);
+            accepted = rng() < acceptanceProbability;
+          } else {
+            accepted = true;
+          }
+        }
+
+        if (accepted) {
+          totalAccepted++;
+          currentLayout = candidateLayout;
+          currentCost = candidateCost;
+
+          if (candidateCost < globalBestCost) {
+            globalBestLayout = this.deepCopyLayout(candidateLayout);
+            globalBestCost = candidateCost;
+            improvementCount++;
+          }
+        } else if (!candidateInvalid) {
+          totalRejected++;
+        }
+
+        // Compute per-metric sums from finger assignments
+        const playableEvents = candidateEvaluation.result.fingerAssignments.filter(
+          e => e.assignedHand !== 'Unplayable' && e.costBreakdown
+        );
+
+        let movementSum = 0, stretchSum = 0, driftSum = 0;
+        let bounceSum = 0, fatigueSum = 0, crossoverSum = 0;
+
+        for (const event of playableEvents) {
+          if (event.costBreakdown) {
+            movementSum += event.costBreakdown.movement;
+            stretchSum += event.costBreakdown.stretch;
+            driftSum += event.costBreakdown.drift;
+            bounceSum += event.costBreakdown.bounce;
+            fatigueSum += event.costBreakdown.fatigue;
+            crossoverSum += event.costBreakdown.crossover;
+          }
+        }
+
+        const deltaCost = candidateInvalid ? 0 : candidateCost - currentCost;
+
+        annealingTrace.push({
+          iteration: step,
+          temperature: currentTemp,
+          currentCost,
+          bestCost: globalBestCost,
+          accepted,
+          deltaCost,
+          acceptanceProbability,
+          movementSum,
+          stretchSum,
+          driftSum,
+          bounceSum,
+          fatigueSum,
+          crossoverSum,
+          restartIndex: restart,
+        });
+
+        // Cooling
+        currentTemp *= ac.coolingRate;
+
+        // Track cost at milestone iterations
+        globalStep++;
+        if (globalStep === Math.floor(totalIterations * 0.25)) costAtMilestones.pct25 = globalBestCost;
+        if (globalStep === Math.floor(totalIterations * 0.50)) costAtMilestones.pct50 = globalBestCost;
+        if (globalStep === Math.floor(totalIterations * 0.75)) costAtMilestones.pct75 = globalBestCost;
+
+        // Yield to prevent UI freezing
+        if (step % 50 === 0 && step > 0) {
+          await new Promise(resolve => setTimeout(resolve, 0));
         }
       }
 
-      if (accepted) {
-        currentLayout = candidateLayout;
-        currentCost = candidateCost;
+      restartBestCosts.push(globalBestCost);
 
-        if (candidateCost < bestCost) {
-          bestLayout = {
-            ...candidateLayout,
-            padToVoice: { ...candidateLayout.padToVoice },
-            fingerConstraints: { ...candidateLayout.fingerConstraints },
-          };
-          bestCost = candidateCost;
-        }
-      }
-
-      // Compute per-metric sums from finger assignments
-      const playableEvents = candidateEvaluation.result.fingerAssignments.filter(
-        e => e.assignedHand !== 'Unplayable' && e.costBreakdown
-      );
-
-      let movementSum = 0, stretchSum = 0, driftSum = 0;
-      let bounceSum = 0, fatigueSum = 0, crossoverSum = 0;
-
-      for (const event of playableEvents) {
-        if (event.costBreakdown) {
-          movementSum += event.costBreakdown.movement;
-          stretchSum += event.costBreakdown.stretch;
-          driftSum += event.costBreakdown.drift;
-          bounceSum += event.costBreakdown.bounce;
-          fatigueSum += event.costBreakdown.fatigue;
-          crossoverSum += event.costBreakdown.crossover;
-        }
-      }
-
-      const deltaCost = candidateInvalid ? 0 : candidateCost - currentCost;
-
-      annealingTrace.push({
-        iteration: step,
-        temperature: currentTemp,
-        currentCost,
-        bestCost,
-        accepted,
-        deltaCost,
-        acceptanceProbability,
-        movementSum,
-        stretchSum,
-        driftSum,
-        bounceSum,
-        fatigueSum,
-        crossoverSum,
-      });
-
-      // Cooling
-      currentTemp *= COOLING_RATE;
-
-      // Yield to prevent UI freezing
-      if (step % 50 === 0 && step > 0) {
+      // Yield between restarts
+      if (restart < restartCount) {
         await new Promise(resolve => setTimeout(resolve, 0));
       }
     }
 
+    costAtMilestones.pct100 = globalBestCost;
+
     // Store the best layout
-    this.bestLayout = {
-      ...bestLayout,
-      padToVoice: { ...bestLayout.padToVoice },
-      fingerConstraints: { ...bestLayout.fingerConstraints },
-    };
+    this.bestLayout = this.deepCopyLayout(globalBestLayout);
 
     // Final high-quality evaluation on best layout
     const finalSolverConfig: SolverConfig = {
       instrumentConfig: this.instrumentConfig,
-      layout: bestLayout,
+      layout: globalBestLayout,
       neutralPadPositionsOverride: this.neutralPadPositionsOverride,
     };
 
     const finalBeamSolver = createBeamSolver(finalSolverConfig);
     const finalConfig: EngineConfiguration = {
       ...config,
-      beamWidth: FINAL_BEAM_WIDTH,
+      beamWidth: ac.finalBeamWidth,
     };
 
     const finalResult = await finalBeamSolver.solve(
       performance, finalConfig, manualAssignments
     );
+
+    const wallClockMs = Date.now() - startWallClock;
+    const iterationsCompleted = globalStep;
+    const totalDecisions = totalAccepted + totalRejected;
+
+    const solverTelemetry: SolverTelemetry = {
+      optimizationMode: ac === FAST_ANNEALING_CONFIG ? 'fast' : 'deep',
+      wallClockMs,
+      iterationsCompleted,
+      restartCount,
+      restartBestCosts,
+      totalAccepted,
+      totalRejected,
+      totalInvalid,
+      acceptanceRate: totalDecisions > 0 ? totalAccepted / totalDecisions : 0,
+      improvementCount,
+      improvementRate: iterationsCompleted > 0 ? improvementCount / iterationsCompleted : 0,
+      finalCostImprovement: initialCost > 0 ? (initialCost - globalBestCost) / initialCost : 0,
+      costAtMilestones,
+    };
 
     return {
       ...finalResult,
@@ -338,6 +390,7 @@ export class AnnealingSolver implements SolverStrategy {
         seed: this.seed,
         objectiveTotal: finalResult.averageMetrics.total,
         objectiveComponentsSummary: finalResult.metadata?.objectiveComponentsSummary,
+        solverTelemetry,
       },
     };
   }
