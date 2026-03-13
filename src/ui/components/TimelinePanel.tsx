@@ -43,7 +43,7 @@ export function TimelinePanel() {
     return assignments.filter(a => activeNotes.has(a.noteNumber));
   }, [assignments, activeNotes]);
 
-  if (!assignments || assignments.length === 0) {
+  if (activeStreams.length === 0) {
     return null;
   }
 

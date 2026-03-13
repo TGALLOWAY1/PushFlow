@@ -10,6 +10,7 @@
  */
 
 import { useState, useCallback, useMemo } from 'react';
+import chroma from 'chroma-js';
 import { useProject } from '../state/ProjectContext';
 import { getActiveLayout, getActiveStreams, type SoundStream } from '../state/projectState';
 import { PadContextMenu } from './PadContextMenu';
@@ -44,6 +45,15 @@ interface PadSummary {
   hands: Set<string>;
   fingers: Set<string>;
   hitCount: number;
+}
+
+function safeColorAlpha(color: string | null | undefined, alpha: number, fallback: string) {
+  if (!color) return fallback;
+  try {
+    return chroma(color).alpha(alpha).css();
+  } catch {
+    return fallback;
+  }
 }
 
 export function InteractiveGrid({ assignments, selectedEventIndex, onEventClick, layoutOverride }: InteractiveGridProps) {
@@ -201,7 +211,7 @@ export function InteractiveGrid({ assignments, selectedEventIndex, onEventClick,
           const hands = [...summary.hands];
           if (hands.length === 1 && hands[0] !== 'Unplayable') {
             const scheme = HAND_COLORS[hands[0] as 'left' | 'right'] ?? HAND_COLORS.mixed;
-            bgColor = voice.color ? `${voice.color}40` : scheme.bg;
+            bgColor = safeColorAlpha(voice.color, 0.25, scheme.bg);
             borderColor = scheme.border;
             textColor = scheme.text;
           } else if (hands.includes('Unplayable') && hands.length === 1) {
@@ -209,13 +219,13 @@ export function InteractiveGrid({ assignments, selectedEventIndex, onEventClick,
             borderColor = HAND_COLORS.Unplayable.border;
             textColor = HAND_COLORS.Unplayable.text;
           } else {
-            bgColor = voice.color ? `${voice.color}40` : HAND_COLORS.mixed.bg;
+            bgColor = safeColorAlpha(voice.color, 0.25, HAND_COLORS.mixed.bg);
             borderColor = HAND_COLORS.mixed.border;
             textColor = HAND_COLORS.mixed.text;
           }
         } else {
           // Assigned but no analysis yet
-          bgColor = voice.color ? `${voice.color}30` : '#1e293b';
+          bgColor = safeColorAlpha(voice.color, 0.18, '#1e293b');
           borderColor = voice.color ?? '#334155';
           textColor = '#94a3b8';
         }

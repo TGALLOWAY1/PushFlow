@@ -266,6 +266,15 @@ export function projectReducer(state: ProjectState, action: ProjectAction): Proj
     case 'ASSIGN_VOICE_TO_PAD':
       return updateActiveLayout(state, layout => {
         const { padKey, stream } = action.payload;
+        
+        // Strip out existing assignments of this stream (acts as Move instead of Copy)
+        const newPadToVoice = { ...layout.padToVoice };
+        for (const [key, v] of Object.entries(newPadToVoice)) {
+          if (v.id === stream.id) {
+            delete newPadToVoice[key];
+          }
+        }
+        
         const voice = {
           id: stream.id,
           name: stream.name,
@@ -274,9 +283,10 @@ export function projectReducer(state: ProjectState, action: ProjectAction): Proj
           originalMidiNote: stream.originalMidiNote,
           color: stream.color,
         };
+        newPadToVoice[padKey] = voice;
         return {
           ...layout,
-          padToVoice: { ...layout.padToVoice, [padKey]: voice },
+          padToVoice: newPadToVoice,
           layoutMode: 'manual',
         };
       });
