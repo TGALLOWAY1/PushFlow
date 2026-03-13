@@ -236,31 +236,31 @@ export function InteractiveGrid({ assignments, selectedEventIndex, onEventClick,
         <div
           key={padKey}
           className={`
-            relative flex flex-col items-center justify-center
+            group relative flex flex-col items-center justify-center
             w-14 h-14 rounded-lg text-[10px] font-mono leading-tight
             border-2 transition-all duration-100 select-none
             ${isSelected ? 'ring-2 ring-yellow-400/60 z-10 scale-105' : ''}
             ${isDragOver ? 'ring-2 ring-blue-400/60 scale-105' : ''}
             ${isDragSource ? 'opacity-30' : ''}
-            ${isMuted ? 'opacity-30' : ''}
+            ${isMuted ? 'opacity-30 pointer-events-none' : ''}
             ${!voice ? 'hover:border-gray-600' : 'hover:scale-[1.02]'}
-            cursor-pointer
+            ${isMuted ? 'cursor-default' : 'cursor-pointer'}
           `}
           style={{
             backgroundColor: isDragOver ? 'rgba(59,130,246,0.15)' : bgColor,
             borderColor: isDragOver ? '#3b82f6' : isSelected ? '#facc15' : borderColor,
             color: textColor,
           }}
-          onClick={() => handlePadClick(row, col)}
+          onClick={() => !isMuted && handlePadClick(row, col)}
           onContextMenu={e => {
             e.preventDefault();
-            setContextMenu({ padKey, x: e.clientX, y: e.clientY });
+            if (!isMuted) setContextMenu({ padKey, x: e.clientX, y: e.clientY });
           }}
-          onDragOver={e => handleDragOver(e, padKey)}
+          onDragOver={e => !isMuted && handleDragOver(e, padKey)}
           onDragLeave={handleDragLeave}
-          onDrop={e => handleDrop(e, padKey)}
-          draggable={!!voice}
-          onDragStart={e => voice && handlePadDragStart(e, padKey, voice)}
+          onDrop={e => !isMuted && handleDrop(e, padKey)}
+          draggable={!!voice && !isMuted}
+          onDragStart={e => voice && !isMuted && handlePadDragStart(e, padKey, voice)}
           onDragEnd={() => { setDragSourcePad(null); setDragOverPad(null); }}
           title={voice
             ? `[${row},${col}] ${voice.name}${summary ? ` | ${summary.hitCount} hits` : ''}${constraint ? ` | Constraint: ${constraint}` : ''}`
@@ -290,14 +290,11 @@ export function InteractiveGrid({ assignments, selectedEventIndex, onEventClick,
                   {constraint}
                 </span>
               )}
-              {/* Remove button (visible on hover via CSS) */}
+              {/* Remove button (visible on hover via parent group) */}
               <button
                 className="absolute top-0 left-0 w-4 h-4 flex items-center justify-center
                            text-[8px] text-red-400 bg-red-500/20 rounded-br opacity-0
-                           hover:opacity-100 transition-opacity"
-                style={{ opacity: undefined }}
-                onMouseEnter={e => (e.currentTarget.style.opacity = '1')}
-                onMouseLeave={e => (e.currentTarget.style.opacity = '0')}
+                           group-hover:opacity-100 transition-opacity"
                 onClick={e => {
                   e.stopPropagation();
                   handleRemovePad(padKey);

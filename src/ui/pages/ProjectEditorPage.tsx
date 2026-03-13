@@ -121,7 +121,7 @@ function ProjectContent() {
             }`}
             onClick={() => handleTabChange('lanes')}
           >
-            Lanes
+            Arrange
           </button>
           <button
             className={`px-3 py-1 text-xs rounded-md transition-colors ${
@@ -131,7 +131,7 @@ function ProjectContent() {
             }`}
             onClick={() => handleTabChange('loop-editor')}
           >
-            Loop Editor
+            Patterns
           </button>
           <button
             className={`px-3 py-1 text-xs rounded-md transition-colors ${
@@ -141,7 +141,7 @@ function ProjectContent() {
             }`}
             onClick={() => handleTabChange('editor')}
           >
-            Editor
+            Grid
           </button>
         </div>
       </div>
@@ -173,7 +173,7 @@ function ProjectContent() {
 
 function EditorContent() {
   const { state, dispatch } = useProject();
-  const { generateFull } = useAutoAnalysis();
+  const { generateFull, generationProgress } = useAutoAnalysis();
   useKeyboardShortcuts();
 
   return (
@@ -220,7 +220,7 @@ function EditorContent() {
         </div>
 
         {/* Right: Side panel */}
-        <div className="flex-1 min-w-0 space-y-3">
+        <div className="flex-1 min-w-0 space-y-3 overflow-y-auto max-h-[calc(100vh-120px)]">
           {/* Voice Palette */}
           <div className="p-3 rounded-lg bg-gray-800/30 border border-gray-700">
             <VoicePalette />
@@ -228,7 +228,7 @@ function EditorContent() {
 
           {/* Analysis */}
           <div className="p-3 rounded-lg bg-gray-800/30 border border-gray-700">
-            <AnalysisSidePanel generateFull={generateFull} />
+            <AnalysisSidePanel generateFull={generateFull} generationProgress={generationProgress} />
           </div>
 
           {/* Diagnostics */}

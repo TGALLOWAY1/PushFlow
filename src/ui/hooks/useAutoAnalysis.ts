@@ -12,7 +12,7 @@
  * Full multi-candidate generation is triggered manually via the toolbar button.
  */
 
-import { useEffect, useRef, useCallback } from 'react';
+import { useEffect, useRef, useCallback, useState } from 'react';
 import { useProject } from '../state/ProjectContext';
 import { getActivePerformance, getActiveLayout, getActiveStreams, type SoundStream } from '../state/projectState';
 import { createBeamSolver } from '../../engine/solvers/beamSolver';
@@ -122,6 +122,7 @@ export function useAutoAnalysis() {
   const { state, dispatch } = useProject();
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const abortRef = useRef(false);
+  const [generationProgress, setGenerationProgress] = useState<string | null>(null);
 
   // Auto re-analysis: fast single-candidate when stale
   useEffect(() => {
@@ -180,6 +181,7 @@ export function useAutoAnalysis() {
         dispatch({ type: 'SET_PROCESSING', payload: false });
       } catch (err) {
         if (!abortRef.current) {
+          dispatch({ type: 'SET_PROCESSING', payload: false });
           dispatch({ type: 'SET_ERROR', payload: err instanceof Error ? err.message : 'Analysis failed' });
         }
       }
@@ -197,8 +199,9 @@ export function useAutoAnalysis() {
     const layout = getActiveLayout(state);
     if (activeStreams.length === 0 || !layout) return;
 
-    dispatch({ type: 'SET_PROCESSING', payload: true });
     dispatch({ type: 'SET_ERROR', payload: null });
+    dispatch({ type: 'SET_PROCESSING', payload: true });
+    setGenerationProgress('Preparing layout...');
 
     try {
       const performance = getActivePerformance(state);
@@ -216,6 +219,8 @@ export function useAutoAnalysis() {
       // Build hard constraints to pass through to each candidate's solver run
       const manualAssignments = buildManualAssignments(performance, effectiveLayout);
 
+      setGenerationProgress('Generating 3 candidates...');
+
       const candidates = await generateCandidates(performance, null, {
         count: 3,
         useAnnealing: false,
@@ -226,14 +231,18 @@ export function useAutoAnalysis() {
         baseLayout: effectiveLayout,
       });
 
+      setGenerationProgress('Ranking results...');
       dispatch({ type: 'SET_CANDIDATES', payload: candidates });
       if (candidates.length > 0) {
         dispatch({ type: 'SET_ANALYSIS_RESULT', payload: candidates[0] });
       }
+      setGenerationProgress(null);
     } catch (err) {
+      setGenerationProgress(null);
+      dispatch({ type: 'SET_PROCESSING', payload: false });
       dispatch({ type: 'SET_ERROR', payload: err instanceof Error ? err.message : 'Generation failed' });
     }
   }, [state, dispatch]);
 
-  return { generateFull };
+  return { generateFull, generationProgress };
 }

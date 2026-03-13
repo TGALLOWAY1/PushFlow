@@ -71,6 +71,7 @@ export function TimelinePanel() {
             voices={voices}
             selectedEventIndex={state.selectedEventIndex}
             onEventClick={idx => dispatch({ type: 'SELECT_EVENT', payload: idx })}
+            tempo={state.tempo}
           />
         </div>
       )}

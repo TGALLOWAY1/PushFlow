@@ -51,7 +51,7 @@ export function DiagnosticsPanel() {
 
       {/* Hand balance */}
       <div className="space-y-1">
-        <span className="text-[10px] text-gray-500">Hand Balance</span>
+        <span className="text-[10px] text-gray-500 cursor-help" title="Distribution of events between left and right hands. A balanced split (40-60%) is usually ideal.">Hand Balance</span>
         <div className="flex items-center gap-2">
           <span className="text-[10px] text-blue-400 w-6 text-right">{handStats.left}</span>
           <div className="flex-1 h-3 bg-gray-800 rounded overflow-hidden flex">
@@ -75,29 +75,29 @@ export function DiagnosticsPanel() {
 
       {/* Score summary */}
       <div className="grid grid-cols-2 gap-1 text-[10px]">
-        <DiagnosticItem label="Total Score" value={executionPlan.score.toFixed(1)} />
-        <DiagnosticItem label="Avg Drift" value={executionPlan.averageDrift.toFixed(3)} />
-        <DiagnosticItem label="Hard Events" value={String(executionPlan.hardCount)} warn={executionPlan.hardCount > 0} />
-        <DiagnosticItem label="Unplayable" value={String(executionPlan.unplayableCount)} warn={executionPlan.unplayableCount > 0} />
+        <DiagnosticItem label="Total Score" value={executionPlan.score.toFixed(1)} tooltip="Sum of all event costs. Lower is better. <5 easy, 5-15 moderate, >15 difficult." />
+        <DiagnosticItem label="Avg Drift" value={executionPlan.averageDrift.toFixed(3)} tooltip="Average hand displacement per event. <0.5 = compact layout, >1.0 = too spread out." />
+        <DiagnosticItem label="Hard Events" value={String(executionPlan.hardCount)} warn={executionPlan.hardCount > 0} tooltip="Events where the finger assignment is strained — big reaches, fast switches, or awkward grips." />
+        <DiagnosticItem label="Unplayable" value={String(executionPlan.unplayableCount)} warn={executionPlan.unplayableCount > 0} tooltip="Events that cannot be physically played — no valid finger assignment exists." />
       </div>
 
       {/* Average metrics */}
       <div className="space-y-1">
-        <span className="text-[10px] text-gray-500">Avg Cost Breakdown</span>
+        <span className="text-[10px] text-gray-500 cursor-help" title="Average cost per event, broken down by factor. Lower is better for each.">Avg Cost Breakdown</span>
         <div className="grid grid-cols-3 gap-1 text-[10px]">
-          <MetricBar label="Move" value={executionPlan.averageMetrics.movement} max={2} />
-          <MetricBar label="Stretch" value={executionPlan.averageMetrics.stretch} max={2} />
-          <MetricBar label="Drift" value={executionPlan.averageMetrics.drift} max={2} />
-          <MetricBar label="Bounce" value={executionPlan.averageMetrics.bounce} max={2} />
-          <MetricBar label="Fatigue" value={executionPlan.averageMetrics.fatigue} max={2} />
-          <MetricBar label="Cross" value={executionPlan.averageMetrics.crossover} max={2} />
+          <MetricBar label="Move" value={executionPlan.averageMetrics.movement} tooltip="Distance fingers travel between events" />
+          <MetricBar label="Stretch" value={executionPlan.averageMetrics.stretch} tooltip="How far fingers spread within a single grip" />
+          <MetricBar label="Drift" value={executionPlan.averageMetrics.drift} tooltip="Hand center displacement from resting position" />
+          <MetricBar label="Bounce" value={executionPlan.averageMetrics.bounce} tooltip="Same-finger repeated use without alternation" />
+          <MetricBar label="Fatigue" value={executionPlan.averageMetrics.fatigue} tooltip="Accumulated finger workload over time" />
+          <MetricBar label="Cross" value={executionPlan.averageMetrics.crossover} tooltip="Hands crossing over each other's zone" />
         </div>
       </div>
 
       {/* Fatigue */}
       {topFatigue.length > 0 && (
         <div className="space-y-1">
-          <span className="text-[10px] text-gray-500">Finger Fatigue</span>
+          <span className="text-[10px] text-gray-500 cursor-help" title="Accumulated workload per finger. >1.0 means that finger is overworked — consider redistributing.">Finger Fatigue</span>
           <div className="space-y-0.5">
             {topFatigue.map(([finger, fatigue]) => (
               <div key={finger} className="flex items-center gap-1 text-[10px]">
@@ -117,36 +117,109 @@ export function DiagnosticsPanel() {
           </div>
         </div>
       )}
+      {/* Actionable suggestions */}
+      <ActionableSuggestions
+        metrics={executionPlan.averageMetrics}
+        balanceRatio={balanceRatio}
+        topFatigue={topFatigue}
+        unplayableCount={executionPlan.unplayableCount}
+        hardCount={executionPlan.hardCount}
+      />
     </div>
   );
 }
 
-function DiagnosticItem({ label, value, warn }: { label: string; value: string; warn?: boolean }) {
+function ActionableSuggestions({ metrics, balanceRatio, topFatigue, unplayableCount, hardCount }: {
+  metrics: { movement: number; stretch: number; drift: number; bounce: number; fatigue: number; crossover: number };
+  balanceRatio: number;
+  topFatigue: [string, number][];
+  unplayableCount: number;
+  hardCount: number;
+}) {
+  const suggestions: { text: string; severity: 'error' | 'warn' | 'info' }[] = [];
+
+  if (unplayableCount > 0) {
+    suggestions.push({ text: `${unplayableCount} event${unplayableCount > 1 ? 's' : ''} cannot be played. Move sounds closer together or split across hands.`, severity: 'error' });
+  }
+  if (metrics.movement > 1.0) {
+    suggestions.push({ text: 'High movement cost — sounds that play in sequence are too far apart. Group frequently alternating sounds on adjacent pads.', severity: 'warn' });
+  }
+  if (metrics.stretch > 0.8) {
+    suggestions.push({ text: 'High stretch — simultaneous sounds require a wide finger spread. Move chords closer together.', severity: 'warn' });
+  }
+  if (metrics.crossover > 0.5) {
+    suggestions.push({ text: 'Frequent hand crossover — sounds are not well-separated by hand zone. Move left-hand sounds to columns 0-3 and right-hand sounds to columns 4-7.', severity: 'warn' });
+  }
+  if (balanceRatio < 0.2 || balanceRatio > 0.8) {
+    const heavy = balanceRatio < 0.2 ? 'right' : 'left';
+    suggestions.push({ text: `${heavy} hand is doing most of the work. Redistribute some sounds to the other hand zone.`, severity: 'warn' });
+  }
+  if (metrics.bounce > 0.6) {
+    suggestions.push({ text: 'Same finger used repeatedly — consider spreading hits across multiple fingers by adjusting pad positions.', severity: 'info' });
+  }
+  if (metrics.drift > 0.8) {
+    suggestions.push({ text: 'High drift — hand center moves a lot. Cluster frequently-used sounds closer to each hand\'s resting position.', severity: 'info' });
+  }
+  const overworkedFingers = topFatigue.filter(([, f]) => f > 1.0);
+  if (overworkedFingers.length > 0) {
+    suggestions.push({ text: `${overworkedFingers.map(([f]) => f).join(', ')} overworked. Pin some events to other fingers using pad constraints.`, severity: 'info' });
+  }
+  if (hardCount > 0 && suggestions.length === 0) {
+    suggestions.push({ text: `${hardCount} hard event${hardCount > 1 ? 's' : ''}. Try Generate to explore alternative layouts.`, severity: 'info' });
+  }
+
+  if (suggestions.length === 0) return null;
+
+  const severityStyles = {
+    error: 'text-red-400 bg-red-500/10 border-red-500/20',
+    warn: 'text-amber-400 bg-amber-500/10 border-amber-500/20',
+    info: 'text-blue-400 bg-blue-500/10 border-blue-500/20',
+  };
+
   return (
-    <div className={`px-2 py-1 rounded border text-center ${
-      warn ? 'border-amber-500/30 bg-amber-500/10' : 'border-gray-700 bg-gray-800/50'
-    }`}>
+    <div className="space-y-1">
+      <span className="text-[10px] text-gray-500">Suggestions</span>
+      {suggestions.slice(0, 3).map((s, i) => (
+        <div key={i} className={`text-[10px] px-2 py-1.5 rounded border ${severityStyles[s.severity]}`}>
+          {s.text}
+        </div>
+      ))}
+    </div>
+  );
+}
+
+function DiagnosticItem({ label, value, warn, tooltip }: { label: string; value: string; warn?: boolean; tooltip?: string }) {
+  return (
+    <div
+      className={`px-2 py-1 rounded border text-center ${
+        warn ? 'border-amber-500/30 bg-amber-500/10' : 'border-gray-700 bg-gray-800/50'
+      } ${tooltip ? 'cursor-help' : ''}`}
+      title={tooltip}
+    >
       <div className="text-[9px] text-gray-500">{label}</div>
       <div className={`font-mono ${warn ? 'text-amber-400' : 'text-gray-300'}`}>{value}</div>
     </div>
   );
 }
 
-function MetricBar({ label, value, max }: { label: string; value: number; max: number }) {
-  const pct = Math.min((value / max) * 100, 100);
+function MetricBar({ label, value, tooltip }: { label: string; value: number; tooltip?: string }) {
+  // Dynamic max: scale to nearest meaningful ceiling so bars are readable
+  const effectiveMax = Math.max(value * 1.5, 0.5);
+  const pct = Math.min((value / effectiveMax) * 100, 100);
+  const severity = value > 1.0 ? 'high' : value > 0.4 ? 'medium' : 'low';
+  const barColor = severity === 'high' ? '#ef4444' : severity === 'medium' ? '#f97316' : '#22c55e';
+  const severityLabel = severity === 'high' ? 'High' : severity === 'medium' ? 'Moderate' : 'Low';
+
   return (
-    <div className="space-y-0.5">
+    <div className={`space-y-0.5 ${tooltip ? 'cursor-help' : ''}`} title={tooltip ? `${tooltip} (${severityLabel}: ${value.toFixed(2)})` : undefined}>
       <div className="flex justify-between text-gray-500">
         <span>{label}</span>
-        <span>{value.toFixed(2)}</span>
+        <span className={severity === 'high' ? 'text-red-400' : severity === 'medium' ? 'text-orange-400' : 'text-gray-500'}>{value.toFixed(2)}</span>
       </div>
       <div className="h-1.5 bg-gray-800 rounded overflow-hidden">
         <div
           className="h-full rounded"
-          style={{
-            width: `${pct}%`,
-            backgroundColor: pct > 75 ? '#ef4444' : pct > 40 ? '#f97316' : '#22c55e',
-          }}
+          style={{ width: `${pct}%`, backgroundColor: barColor }}
         />
       </div>
     </div>

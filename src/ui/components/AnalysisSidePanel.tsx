@@ -13,7 +13,7 @@ import { type CandidateSolution } from '../../types/candidateSolution';
 
 type PanelTab = 'analysis' | 'compare';
 
-export function AnalysisSidePanel({ generateFull }: { generateFull: () => Promise<void> }) {
+export function AnalysisSidePanel({ generateFull, generationProgress }: { generateFull: () => Promise<void>; generationProgress?: string | null }) {
   const { state, dispatch } = useProject();
   const [tab, setTab] = useState<PanelTab>('analysis');
   const compareId = state.compareCandidateId;
@@ -68,7 +68,7 @@ export function AnalysisSidePanel({ generateFull }: { generateFull: () => Promis
           {/* Processing indicator */}
           {state.isProcessing && (
             <div className="text-xs text-blue-400 animate-pulse">
-              Running analysis...
+              {generationProgress || 'Running analysis...'}
             </div>
           )}
 
@@ -86,12 +86,23 @@ export function AnalysisSidePanel({ generateFull }: { generateFull: () => Promis
 
               {/* Score stats */}
               <div className="flex gap-2 text-[11px]">
-                <StatBadge label="Score" value={activeResult.executionPlan.score.toFixed(1)} />
-                <StatBadge label="Drift" value={activeResult.executionPlan.averageDrift.toFixed(2)} />
+                <StatBadge
+                  label="Score"
+                  value={activeResult.executionPlan.score.toFixed(1)}
+                  tooltip="Total execution cost (lower is better). <5 easy, 5-15 moderate, >15 difficult"
+                  quality={activeResult.executionPlan.score < 5 ? 'good' : activeResult.executionPlan.score < 15 ? 'ok' : 'bad'}
+                />
+                <StatBadge
+                  label="Drift"
+                  value={activeResult.executionPlan.averageDrift.toFixed(2)}
+                  tooltip="Avg hand movement per event (lower = more compact). <0.5 compact, >1.0 spread out"
+                  quality={activeResult.executionPlan.averageDrift < 0.5 ? 'good' : activeResult.executionPlan.averageDrift < 1.0 ? 'ok' : 'bad'}
+                />
                 <StatBadge
                   label="Hard"
                   value={String(activeResult.executionPlan.hardCount)}
                   warn={activeResult.executionPlan.hardCount > 0}
+                  tooltip="Events requiring difficult reaches or fast hand switches. Zero is ideal"
                 />
               </div>
 
@@ -202,12 +213,27 @@ function CompareContent({
   );
 }
 
-function StatBadge({ label, value, warn }: { label: string; value: string; warn?: boolean }) {
+const QUALITY_STYLES = {
+  good: { border: 'border-green-500/30', bg: 'bg-green-500/10', dot: 'bg-green-400' },
+  ok: { border: 'border-gray-700', bg: 'bg-gray-800/50', dot: 'bg-yellow-400' },
+  bad: { border: 'border-red-500/30', bg: 'bg-red-500/10', dot: 'bg-red-400' },
+} as const;
+
+function StatBadge({ label, value, warn, tooltip, quality }: {
+  label: string; value: string; warn?: boolean; tooltip?: string;
+  quality?: 'good' | 'ok' | 'bad';
+}) {
+  const qStyle = quality ? QUALITY_STYLES[quality] : null;
+  const borderClass = warn ? 'border-amber-500/30' : qStyle?.border ?? 'border-gray-700';
+  const bgClass = warn ? 'bg-amber-500/10' : qStyle?.bg ?? 'bg-gray-800/50';
+
   return (
-    <div className={`px-2 py-1 rounded border text-[11px] ${
-      warn ? 'border-amber-500/30 bg-amber-500/10' : 'border-gray-700 bg-gray-800/50'
-    }`}>
+    <div
+      className={`px-2 py-1 rounded border text-[11px] ${borderClass} ${bgClass} cursor-help`}
+      title={tooltip}
+    >
       <span className="text-[9px] text-gray-500 uppercase mr-1">{label}</span>
+      {quality && <span className={`inline-block w-1.5 h-1.5 rounded-full ${qStyle!.dot} mr-1 align-middle`} />}
       <span className={`font-mono ${warn ? 'text-amber-400' : 'text-gray-200'}`}>{value}</span>
     </div>
   );
