@@ -120,7 +120,6 @@ export function DiagnosticsPanel() {
       {/* Actionable suggestions */}
       <ActionableSuggestions
         metrics={executionPlan.averageMetrics}
-        handStats={handStats}
         balanceRatio={balanceRatio}
         topFatigue={topFatigue}
         unplayableCount={executionPlan.unplayableCount}
@@ -130,9 +129,8 @@ export function DiagnosticsPanel() {
   );
 }
 
-function ActionableSuggestions({ metrics, handStats, balanceRatio, topFatigue, unplayableCount, hardCount }: {
+function ActionableSuggestions({ metrics, balanceRatio, topFatigue, unplayableCount, hardCount }: {
   metrics: { movement: number; stretch: number; drift: number; bounce: number; fatigue: number; crossover: number };
-  handStats: { left: number; right: number; unplayable: number; total: number };
   balanceRatio: number;
   topFatigue: [string, number][];
   unplayableCount: number;
