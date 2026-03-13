@@ -117,6 +117,75 @@ export function DiagnosticsPanel() {
           </div>
         </div>
       )}
+      {/* Actionable suggestions */}
+      <ActionableSuggestions
+        metrics={executionPlan.averageMetrics}
+        handStats={handStats}
+        balanceRatio={balanceRatio}
+        topFatigue={topFatigue}
+        unplayableCount={executionPlan.unplayableCount}
+        hardCount={executionPlan.hardCount}
+      />
+    </div>
+  );
+}
+
+function ActionableSuggestions({ metrics, handStats, balanceRatio, topFatigue, unplayableCount, hardCount }: {
+  metrics: { movement: number; stretch: number; drift: number; bounce: number; fatigue: number; crossover: number };
+  handStats: { left: number; right: number; unplayable: number; total: number };
+  balanceRatio: number;
+  topFatigue: [string, number][];
+  unplayableCount: number;
+  hardCount: number;
+}) {
+  const suggestions: { text: string; severity: 'error' | 'warn' | 'info' }[] = [];
+
+  if (unplayableCount > 0) {
+    suggestions.push({ text: `${unplayableCount} event${unplayableCount > 1 ? 's' : ''} cannot be played. Move sounds closer together or split across hands.`, severity: 'error' });
+  }
+  if (metrics.movement > 1.0) {
+    suggestions.push({ text: 'High movement cost — sounds that play in sequence are too far apart. Group frequently alternating sounds on adjacent pads.', severity: 'warn' });
+  }
+  if (metrics.stretch > 0.8) {
+    suggestions.push({ text: 'High stretch — simultaneous sounds require a wide finger spread. Move chords closer together.', severity: 'warn' });
+  }
+  if (metrics.crossover > 0.5) {
+    suggestions.push({ text: 'Frequent hand crossover — sounds are not well-separated by hand zone. Move left-hand sounds to columns 0-3 and right-hand sounds to columns 4-7.', severity: 'warn' });
+  }
+  if (balanceRatio < 0.2 || balanceRatio > 0.8) {
+    const heavy = balanceRatio < 0.2 ? 'right' : 'left';
+    suggestions.push({ text: `${heavy} hand is doing most of the work. Redistribute some sounds to the other hand zone.`, severity: 'warn' });
+  }
+  if (metrics.bounce > 0.6) {
+    suggestions.push({ text: 'Same finger used repeatedly — consider spreading hits across multiple fingers by adjusting pad positions.', severity: 'info' });
+  }
+  if (metrics.drift > 0.8) {
+    suggestions.push({ text: 'High drift — hand center moves a lot. Cluster frequently-used sounds closer to each hand\'s resting position.', severity: 'info' });
+  }
+  const overworkedFingers = topFatigue.filter(([, f]) => f > 1.0);
+  if (overworkedFingers.length > 0) {
+    suggestions.push({ text: `${overworkedFingers.map(([f]) => f).join(', ')} overworked. Pin some events to other fingers using pad constraints.`, severity: 'info' });
+  }
+  if (hardCount > 0 && suggestions.length === 0) {
+    suggestions.push({ text: `${hardCount} hard event${hardCount > 1 ? 's' : ''}. Try Generate to explore alternative layouts.`, severity: 'info' });
+  }
+
+  if (suggestions.length === 0) return null;
+
+  const severityStyles = {
+    error: 'text-red-400 bg-red-500/10 border-red-500/20',
+    warn: 'text-amber-400 bg-amber-500/10 border-amber-500/20',
+    info: 'text-blue-400 bg-blue-500/10 border-blue-500/20',
+  };
+
+  return (
+    <div className="space-y-1">
+      <span className="text-[10px] text-gray-500">Suggestions</span>
+      {suggestions.slice(0, 3).map((s, i) => (
+        <div key={i} className={`text-[10px] px-2 py-1.5 rounded border ${severityStyles[s.severity]}`}>
+          {s.text}
+        </div>
+      ))}
     </div>
   );
 }
