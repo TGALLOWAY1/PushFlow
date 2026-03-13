@@ -242,25 +242,25 @@ export function InteractiveGrid({ assignments, selectedEventIndex, onEventClick,
             ${isSelected ? 'ring-2 ring-yellow-400/60 z-10 scale-105' : ''}
             ${isDragOver ? 'ring-2 ring-blue-400/60 scale-105' : ''}
             ${isDragSource ? 'opacity-30' : ''}
-            ${isMuted ? 'opacity-30' : ''}
+            ${isMuted ? 'opacity-30 pointer-events-none' : ''}
             ${!voice ? 'hover:border-gray-600' : 'hover:scale-[1.02]'}
-            cursor-pointer
+            ${isMuted ? 'cursor-default' : 'cursor-pointer'}
           `}
           style={{
             backgroundColor: isDragOver ? 'rgba(59,130,246,0.15)' : bgColor,
             borderColor: isDragOver ? '#3b82f6' : isSelected ? '#facc15' : borderColor,
             color: textColor,
           }}
-          onClick={() => handlePadClick(row, col)}
+          onClick={() => !isMuted && handlePadClick(row, col)}
           onContextMenu={e => {
             e.preventDefault();
-            setContextMenu({ padKey, x: e.clientX, y: e.clientY });
+            if (!isMuted) setContextMenu({ padKey, x: e.clientX, y: e.clientY });
           }}
-          onDragOver={e => handleDragOver(e, padKey)}
+          onDragOver={e => !isMuted && handleDragOver(e, padKey)}
           onDragLeave={handleDragLeave}
-          onDrop={e => handleDrop(e, padKey)}
-          draggable={!!voice}
-          onDragStart={e => voice && handlePadDragStart(e, padKey, voice)}
+          onDrop={e => !isMuted && handleDrop(e, padKey)}
+          draggable={!!voice && !isMuted}
+          onDragStart={e => voice && !isMuted && handlePadDragStart(e, padKey, voice)}
           onDragEnd={() => { setDragSourcePad(null); setDragOverPad(null); }}
           title={voice
             ? `[${row},${col}] ${voice.name}${summary ? ` | ${summary.hitCount} hits` : ''}${constraint ? ` | Constraint: ${constraint}` : ''}`

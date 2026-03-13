@@ -121,7 +121,7 @@ function ProjectContent() {
             }`}
             onClick={() => handleTabChange('lanes')}
           >
-            Lanes
+            Arrange
           </button>
           <button
             className={`px-3 py-1 text-xs rounded-md transition-colors ${
@@ -131,7 +131,7 @@ function ProjectContent() {
             }`}
             onClick={() => handleTabChange('loop-editor')}
           >
-            Loop Editor
+            Patterns
           </button>
           <button
             className={`px-3 py-1 text-xs rounded-md transition-colors ${
@@ -141,7 +141,7 @@ function ProjectContent() {
             }`}
             onClick={() => handleTabChange('editor')}
           >
-            Editor
+            Grid
           </button>
         </div>
       </div>
