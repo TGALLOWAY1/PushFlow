@@ -11,6 +11,7 @@ import { useProject } from '../state/ProjectContext';
 import { getActiveStreams } from '../state/projectState';
 import { ExecutionTimeline } from './ExecutionTimeline';
 import { type Voice } from '../../types/voice';
+import { type FingerAssignment } from '../../types/executionPlan';
 
 export function TimelinePanel() {
   const { state, dispatch } = useProject();
@@ -39,9 +40,29 @@ export function TimelinePanel() {
   );
 
   const filteredAssignments = useMemo(() => {
-    if (!assignments) return [];
-    return assignments.filter(a => activeNotes.has(a.noteNumber));
-  }, [assignments, activeNotes]);
+    if (assignments && assignments.length > 0) {
+      return assignments.filter(a => activeNotes.has(a.noteNumber));
+    }
+    // Before generation, construct "dummy" assignments to render raw MIDI
+    const dummies: FingerAssignment[] = [];
+    for (const s of activeStreams) {
+      if (!activeNotes.has(s.originalMidiNote)) continue;
+      for (const ev of s.events) {
+        dummies.push({
+          eventKey: ev.eventKey,
+          eventIndex: 0,
+          noteNumber: s.originalMidiNote,
+          startTime: ev.startTime,
+          assignedHand: 'raw' as any, // Neutral styling
+          finger: 'unassigned' as any,
+          cost: 0,
+          difficulty: 'Easy',
+          costBreakdown: { movement: 0, stretch: 0, drift: 0, bounce: 0, fatigue: 0, crossover: 0, total: 0 } as any,
+        });
+      }
+    }
+    return dummies.sort((a, b) => a.startTime - b.startTime).map((a, i) => ({ ...a, eventIndex: i }));
+  }, [assignments, activeStreams, activeNotes]);
 
   // RequestAnimationFrame playback loop
   useEffect(() => {

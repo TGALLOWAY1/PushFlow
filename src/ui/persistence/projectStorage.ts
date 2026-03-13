@@ -5,6 +5,7 @@
  */
 
 import { type ProjectState, createEmptyProjectState } from '../state/projectState';
+import { buildLegacySourceFile, buildPerformanceLanesFromStreams } from '../state/streamsToLanes';
 
 const INDEX_KEY = 'pushflow_projects';
 const PROJECT_PREFIX = 'pushflow_project_';
@@ -184,6 +185,13 @@ function validateProjectState(parsed: unknown): ProjectState {
 
   const base = createEmptyProjectState();
 
+  const soundStreams = Array.isArray(p.soundStreams) ? p.soundStreams as ProjectState['soundStreams'] : [];
+  const persistedLanes = Array.isArray(p.performanceLanes) ? p.performanceLanes as ProjectState['performanceLanes'] : [];
+  const performanceLanes = persistedLanes.length > 0
+    ? persistedLanes
+    : buildPerformanceLanesFromStreams(soundStreams);
+  const sourceFiles = Array.isArray(p.sourceFiles) ? p.sourceFiles as ProjectState['sourceFiles'] : [];
+
   return {
     ...base,
     id: p.id as string,
@@ -191,7 +199,7 @@ function validateProjectState(parsed: unknown): ProjectState {
     createdAt: typeof p.createdAt === 'string' ? p.createdAt : base.createdAt,
     updatedAt: typeof p.updatedAt === 'string' ? p.updatedAt : base.updatedAt,
     isDemo: typeof p.isDemo === 'boolean' ? p.isDemo : false,
-    soundStreams: Array.isArray(p.soundStreams) ? p.soundStreams as ProjectState['soundStreams'] : [],
+    soundStreams,
     tempo: typeof p.tempo === 'number' ? p.tempo : 120,
     instrumentConfig: (p.instrumentConfig && typeof p.instrumentConfig === 'object')
       ? p.instrumentConfig as ProjectState['instrumentConfig']
@@ -206,10 +214,11 @@ function validateProjectState(parsed: unknown): ProjectState {
     engineConfig: (p.engineConfig && typeof p.engineConfig === 'object')
       ? p.engineConfig as ProjectState['engineConfig']
       : base.engineConfig,
-    // Performance Lanes (defaults to [] for old projects)
-    performanceLanes: Array.isArray(p.performanceLanes) ? p.performanceLanes as ProjectState['performanceLanes'] : [],
+    performanceLanes,
     laneGroups: Array.isArray(p.laneGroups) ? p.laneGroups as ProjectState['laneGroups'] : [],
-    sourceFiles: Array.isArray(p.sourceFiles) ? p.sourceFiles as ProjectState['sourceFiles'] : [],
+    sourceFiles: sourceFiles.length > 0 || performanceLanes.length === 0
+      ? sourceFiles
+      : [buildLegacySourceFile(soundStreams)],
     // Ephemeral state always reset
     selectedEventIndex: null,
     isProcessing: false,

@@ -12,6 +12,7 @@ import { countTimeSlices } from '../../../types/performanceLane';
 
 interface LaneToolbarProps {
   zoom: number;
+  minZoom: number;
   onZoomChange: (zoom: number) => void;
   showInactive: boolean;
   onToggleShowInactive: () => void;
@@ -21,6 +22,7 @@ interface LaneToolbarProps {
 
 export function LaneToolbar({
   zoom,
+  minZoom,
   onZoomChange,
   showInactive,
   onToggleShowInactive,
@@ -93,8 +95,8 @@ export function LaneToolbar({
         <span className="text-[10px] text-gray-500">Zoom</span>
         <input
           type="range"
-          min={20}
-          max={400}
+          min={minZoom}
+          max={Math.max(400, minZoom * 4)}
           value={zoom}
           onChange={e => onZoomChange(Number(e.target.value))}
           className="w-20 h-1 accent-blue-500"

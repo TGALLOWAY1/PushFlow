@@ -28,10 +28,11 @@ const FINGER_ABBREV: Record<string, string> = {
   thumb: 'Th', index: 'Ix', middle: 'Md', ring: 'Rg', pinky: 'Pk',
 };
 
-const HAND_STYLES = {
+const HAND_STYLES: Record<string, { bg: string, text: string }> = {
   left: { bg: '#3b82f6', text: '#dbeafe' },
   right: { bg: '#a855f7', text: '#f3e8ff' },
   Unplayable: { bg: '#ef4444', text: '#fecaca' },
+  raw: { bg: '#4b5563', text: '#9ca3af' }, // neutral pre-generation events
 };
 
 const LANE_HEIGHT = 28;
@@ -42,14 +43,19 @@ const EVENT_WIDTH = 20;
 export function ExecutionTimeline({ assignments, voices, selectedEventIndex, onEventClick, tempo = 120, currentTime }: ExecutionTimelineProps) {
   const [zoom, setZoom] = useState(1);
   const scrollRef = useRef<HTMLDivElement>(null);
-
-  if (assignments.length === 0) {
-    return <div className="text-gray-500 text-sm">No assignments to display.</div>;
+  
+  let tempMinTime = 0, tempMaxTime = 0, tempDuration = 0.1;
+  try {
+    tempMinTime = assignments.length > 0 ? assignments[0].startTime : 0;
+    tempMaxTime = assignments.length > 0 ? assignments[assignments.length - 1].startTime : 0;
+    tempDuration = Math.max(tempMaxTime - tempMinTime, 0.1);
+  } catch (err) {
+    console.error('ExecutionTimeline: error computing min/max', err, { assignments });
   }
 
-  const minTime = assignments[0].startTime;
-  const maxTime = assignments[assignments.length - 1].startTime;
-  const duration = Math.max(maxTime - minTime, 0.1);
+  const minTime = tempMinTime;
+  const maxTime = tempMaxTime;
+  const duration = tempDuration;
 
   // Build voice lookup by noteNumber
   const voiceByNote = useMemo(() => {
@@ -117,6 +123,14 @@ export function ExecutionTimeline({ assignments, voices, selectedEventIndex, onE
     }
     return labels;
   }, [zoom, minTime, duration]);
+
+  if (assignments.length === 0) {
+    return (
+      <div className="w-full py-4 text-center text-gray-500 text-xs text-medium">
+        No events to display.
+      </div>
+    );
+  }
 
   return (
     <div className="w-full space-y-1">
@@ -248,9 +262,9 @@ export function ExecutionTimeline({ assignments, voices, selectedEventIndex, onE
 
               const x = ((a.startTime - minTime) / duration) * 100;
               const isSelected = a.eventIndex === selectedEventIndex;
-              const style = HAND_STYLES[a.assignedHand] ?? HAND_STYLES.Unplayable;
+              const style = HAND_STYLES[a.assignedHand] ?? HAND_STYLES.raw;
               const fingerLabel = a.finger ? FINGER_ABBREV[a.finger] ?? a.finger : '?';
-              const handPrefix = a.assignedHand === 'left' ? 'L' : a.assignedHand === 'right' ? 'R' : '!';
+              const handPrefix = a.assignedHand === 'left' ? 'L' : a.assignedHand === 'right' ? 'R' : '';
 
               return (
                 <button

@@ -6,6 +6,7 @@
 
 import { useMemo } from 'react';
 import { useProject } from '../state/ProjectContext';
+import { DifficultyHeatmap } from './DifficultyHeatmap';
 
 export function DiagnosticsPanel() {
   const { state } = useProject();
@@ -46,10 +47,50 @@ export function DiagnosticsPanel() {
     : 0.5;
 
   return (
-    <div className="space-y-3">
-      <h4 className="text-xs text-gray-500 font-medium">Diagnostics</h4>
+    <div className="space-y-6">
+      <div className="space-y-3 border-b border-gray-800 pb-4">
+        <h4 className="text-xs text-gray-400 font-medium tracking-wide uppercase">Analysis</h4>
+        <DifficultyHeatmap analysis={result.difficultyAnalysis} />
 
-      {/* Hand balance */}
+        {/* Score stats */}
+        <div className="flex gap-2 text-[11px] pt-1">
+          <StatBadge
+            label="Score"
+            value={executionPlan.score.toFixed(1)}
+            tooltip="Total execution cost (lower is better). <5 easy, 5-15 moderate, >15 difficult"
+            quality={executionPlan.score < 5 ? 'good' : executionPlan.score < 15 ? 'ok' : 'bad'}
+          />
+          <StatBadge
+            label="Drift"
+            value={executionPlan.averageDrift.toFixed(2)}
+            tooltip="Avg hand movement per event (lower = more compact). <0.5 compact, >1.0 spread out"
+            quality={executionPlan.averageDrift < 0.5 ? 'good' : executionPlan.averageDrift < 1.0 ? 'ok' : 'bad'}
+          />
+          <StatBadge
+            label="Hard"
+            value={String(executionPlan.hardCount)}
+            warn={executionPlan.hardCount > 0}
+            tooltip="Events requiring difficult reaches or fast hand switches. Zero is ideal"
+          />
+        </div>
+
+        {/* Finger usage */}
+        <div className="space-y-1 pt-1">
+          <span className="text-[10px] text-gray-500">Finger Usage</span>
+          <div className="flex flex-wrap gap-1 text-[10px] text-gray-400">
+            {Object.entries(executionPlan.fingerUsageStats).map(([finger, count]) => (
+              <span key={finger} className="bg-gray-800/80 px-1.5 py-0.5 rounded flex items-center gap-1 border border-gray-700/50">
+                {finger}: <span className="text-gray-200">{count}</span>
+              </span>
+            ))}
+          </div>
+        </div>
+      </div>
+
+      <div className="space-y-3">
+        <h4 className="text-xs text-gray-400 font-medium tracking-wide uppercase">Diagnostics</h4>
+
+        {/* Hand balance */}
       <div className="space-y-1">
         <span className="text-[10px] text-gray-500 cursor-help" title="Distribution of events between left and right hands. A balanced split (40-60%) is usually ideal.">Hand Balance</span>
         <div className="flex items-center gap-2">
@@ -125,6 +166,7 @@ export function DiagnosticsPanel() {
         unplayableCount={executionPlan.unplayableCount}
         hardCount={executionPlan.hardCount}
       />
+    </div>
     </div>
   );
 }
@@ -222,6 +264,32 @@ function MetricBar({ label, value, tooltip }: { label: string; value: number; to
           style={{ width: `${pct}%`, backgroundColor: barColor }}
         />
       </div>
+    </div>
+  );
+}
+
+const QUALITY_STYLES = {
+  good: { border: 'border-green-500/30', bg: 'bg-green-500/10', dot: 'bg-green-400' },
+  ok: { border: 'border-gray-700', bg: 'bg-gray-800/50', dot: 'bg-yellow-400' },
+  bad: { border: 'border-red-500/30', bg: 'bg-red-500/10', dot: 'bg-red-400' },
+} as const;
+
+function StatBadge({ label, value, warn, tooltip, quality }: {
+  label: string; value: string; warn?: boolean; tooltip?: string;
+  quality?: 'good' | 'ok' | 'bad';
+}) {
+  const qStyle = quality ? QUALITY_STYLES[quality] : null;
+  const borderClass = warn ? 'border-amber-500/30' : qStyle?.border ?? 'border-gray-700';
+  const bgClass = warn ? 'bg-amber-500/10' : qStyle?.bg ?? 'bg-gray-800/50';
+
+  return (
+    <div
+      className={`px-2 py-1 rounded border text-[11px] ${borderClass} ${bgClass} cursor-help`}
+      title={tooltip}
+    >
+      <span className="text-[9px] text-gray-500 uppercase mr-1">{label}</span>
+      {quality && <span className={`inline-block w-1.5 h-1.5 rounded-full ${qStyle!.dot} mr-1 align-middle`} />}
+      <span className={`font-mono ${warn ? 'text-amber-400' : 'text-gray-200'}`}>{value}</span>
     </div>
   );
 }

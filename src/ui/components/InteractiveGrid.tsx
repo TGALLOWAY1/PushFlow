@@ -16,6 +16,7 @@ import { getActiveLayout, getActiveStreams, type SoundStream } from '../state/pr
 import { PadContextMenu } from './PadContextMenu';
 import { type Voice } from '../../types/voice';
 import { type FingerAssignment } from '../../types/executionPlan';
+import { buildSelectedTransitionModel } from '../analysis/selectionModel';
 
 interface InteractiveGridProps {
   assignments?: FingerAssignment[];
@@ -32,11 +33,17 @@ const FINGER_ABBREV: Record<string, string> = {
 };
 
 const HAND_COLORS = {
-  left: { bg: 'rgba(59,130,246,0.25)', border: '#3b82f6', text: '#93c5fd' },
-  right: { bg: 'rgba(168,85,247,0.25)', border: '#a855f7', text: '#d8b4fe' },
-  Unplayable: { bg: 'rgba(239,68,68,0.2)', border: '#ef4444', text: '#fca5a5' },
-  mixed: { bg: 'rgba(234,179,8,0.2)', border: '#eab308', text: '#fde68a' },
+  left: '#0088FF', // Azure (V1 left hand base)
+  right: '#FF4400', // Orange-Red (V1 right hand base)
+  Unplayable: '#FF3333',
+  mixed: '#FFCC00',
 };
+
+const CELL_SIZE = 56;
+const CELL_GAP = 4;
+const GRID_STEP = CELL_SIZE + CELL_GAP;
+const GRID_OFFSET_X = 20;
+const GRID_CENTER_OFFSET = CELL_SIZE / 2;
 
 interface PadSummary {
   voiceName: string;
@@ -114,6 +121,41 @@ export function InteractiveGrid({ assignments, selectedEventIndex, onEventClick,
     }
     return keys;
   }, [assignments, selectedEventIndex]);
+
+  const selectedTransition = useMemo(
+    () => buildSelectedTransitionModel(assignments, selectedEventIndex),
+    [assignments, selectedEventIndex],
+  );
+
+  const nextPadKeys = selectedTransition?.nextPadKeys ?? new Set<string>();
+  const sharedPadKeys = selectedTransition?.sharedPadKeys ?? new Set<string>();
+
+  const transitionPaths = useMemo(() => {
+    if (!selectedTransition) return [];
+
+    return selectedTransition.fingerMoves
+      .filter(move => move.fromPad && move.toPad && !move.isHold)
+      .map(move => {
+        const [fromRow, fromCol] = move.fromPad!.split(',').map(Number);
+        const [toRow, toCol] = move.toPad!.split(',').map(Number);
+        const startX = GRID_OFFSET_X + toGridX(fromCol);
+        const startY = toGridY(fromRow);
+        const endX = GRID_OFFSET_X + toGridX(toCol);
+        const endY = toGridY(toRow);
+        const midX = (startX + endX) / 2;
+        const midY = (startY + endY) / 2;
+        const controlX = midX + (move.hand === 'left' ? -18 : 18);
+        const controlY = midY - 24;
+        return {
+          id: `${move.hand}-${move.finger}-${move.fromPad}-${move.toPad}`,
+          color: HAND_COLORS[move.hand],
+          label: `${move.hand[0].toUpperCase()}-${FINGER_ABBREV[move.finger] ?? move.finger}`,
+          d: `M ${startX} ${startY} Q ${controlX} ${controlY} ${endX} ${endY}`,
+          endX,
+          endY,
+        };
+      });
+  }, [selectedTransition]);
 
   // Active playing pads
   const activePadKeys = useMemo(() => {
@@ -222,43 +264,45 @@ export function InteractiveGrid({ assignments, selectedEventIndex, onEventClick,
       const summary = padSummaries.get(padKey);
       const isSelected = selectedPadKeys.has(padKey);
       const isActivePlaying = activePadKeys.has(padKey);
+      const isNext = nextPadKeys.has(padKey);
+      const isShared = sharedPadKeys.has(padKey);
       const isDragOver = padKey === dragOverPad;
       const isDragSource = padKey === dragSourcePad;
-      const isLeftZone = col < 4;
       const constraint = layout?.fingerConstraints[padKey];
 
       // Determine colors
-      let bgColor: string;
-      let borderColor: string;
-      let textColor: string;
+      let bgColor = 'var(--bg-panel)';
+      let borderColor = 'var(--border-subtle)';
+      let textColor = 'var(--text-tertiary)';
+      let glowColor: string | null = null;
+      let isGlowActive = false;
 
       if (voice) {
         if (summary && summary.hitCount > 0) {
           const hands = [...summary.hands];
           if (hands.length === 1 && hands[0] !== 'Unplayable') {
-            const scheme = HAND_COLORS[hands[0] as 'left' | 'right'] ?? HAND_COLORS.mixed;
-            bgColor = safeColorAlpha(voice.color, 0.25, scheme.bg);
-            borderColor = scheme.border;
-            textColor = scheme.text;
+            glowColor = HAND_COLORS[hands[0] as 'left' | 'right'] ?? HAND_COLORS.mixed;
+            borderColor = glowColor;
+            textColor = 'var(--text-primary)';
+            isGlowActive = true;
           } else if (hands.includes('Unplayable') && hands.length === 1) {
-            bgColor = HAND_COLORS.Unplayable.bg;
-            borderColor = HAND_COLORS.Unplayable.border;
-            textColor = HAND_COLORS.Unplayable.text;
+            glowColor = HAND_COLORS.Unplayable;
+            borderColor = glowColor;
+            textColor = glowColor;
+            isGlowActive = true;
           } else {
-            bgColor = safeColorAlpha(voice.color, 0.25, HAND_COLORS.mixed.bg);
-            borderColor = HAND_COLORS.mixed.border;
-            textColor = HAND_COLORS.mixed.text;
+            glowColor = HAND_COLORS.mixed;
+            borderColor = glowColor;
+            textColor = 'var(--text-primary)';
+            isGlowActive = true;
           }
         } else {
           // Assigned but no analysis yet
-          bgColor = safeColorAlpha(voice.color, 0.18, '#1e293b');
-          borderColor = voice.color ?? '#334155';
-          textColor = '#94a3b8';
+          glowColor = voice.color ?? 'var(--border-strong)';
+          borderColor = glowColor;
+          textColor = 'var(--text-secondary)';
+          // No isGlowActive here unless selected/playing
         }
-      } else {
-        bgColor = isLeftZone ? '#0f172a' : '#120f1f';
-        borderColor = '#1e293b';
-        textColor = '#475569';
       }
 
       // Finger display
@@ -268,25 +312,41 @@ export function InteractiveGrid({ assignments, selectedEventIndex, onEventClick,
       const streamForVoice = voice ? state.soundStreams.find(s => s.id === voice.id) : null;
       const isMuted = streamForVoice?.muted ?? false;
 
+      // Active/selected states override glow level, but keep the color if we have one
+      const displayGlowColor = glowColor ?? borderColor;
+      const boxGlow = isSelected || isActivePlaying 
+        ? `inset 0 0 15px ${displayGlowColor}, 0 0 10px ${displayGlowColor}`
+        : isGlowActive
+          ? `inset 0 0 8px ${safeColorAlpha(displayGlowColor, 0.3, displayGlowColor)}`
+          : 'none';
+
       cells.push(
         <div
           key={padKey}
           className={`
             group relative flex flex-col items-center justify-center
             w-14 h-14 rounded-lg text-[10px] font-mono leading-tight
-            border-2 transition-all duration-100 select-none
-            ${isSelected ? 'ring-2 ring-yellow-400/60 z-10 scale-105' : ''}
-            ${isActivePlaying && !isSelected ? 'ring-2 ring-emerald-400/90 z-10 scale-105 brightness-125' : ''}
-            ${isDragOver ? 'ring-2 ring-blue-400/60 scale-105' : ''}
+            border transition-all duration-100 select-none
+            ${isSelected ? 'z-10 scale-105 brightness-125 bg-[var(--bg-card)]' : ''}
+            ${isActivePlaying && !isSelected ? 'z-10 scale-105 brightness-150 bg-[var(--bg-card)]' : ''}
+            ${isNext && !isSelected ? 'border-dashed brightness-110' : ''}
+            ${isShared ? 'ring-1 ring-emerald-400/50' : ''}
+            ${isDragOver ? 'ring-2 ring-blue-400/60 scale-105 bg-[var(--bg-card)]' : ''}
             ${isDragSource ? 'opacity-30' : ''}
             ${isMuted ? 'opacity-30 pointer-events-none' : ''}
-            ${!voice ? 'hover:border-gray-600 shadow-[inset_0_2px_4px_rgba(0,0,0,0.4)]' : 'hover:scale-[1.02] shadow-sm'}
+            ${!voice ? 'hover:brightness-110' : 'hover:scale-[1.02]'}
             ${isMuted ? 'cursor-default' : 'cursor-pointer active:scale-95'}
           `}
           style={{
-            backgroundColor: isDragOver ? 'rgba(59,130,246,0.15)' : bgColor,
-            borderColor: isDragOver ? '#3b82f6' : isSelected ? '#facc15' : borderColor,
+            backgroundColor: isSelected || isActivePlaying
+              ? 'var(--bg-card)'
+              : isNext && !voice
+                ? 'rgba(59, 130, 246, 0.08)'
+                : bgColor,
+            borderColor: isDragOver ? '#3b82f6' : isNext && !isSelected ? '#60a5fa' : borderColor,
             color: textColor,
+            boxShadow: boxGlow,
+            opacity: isNext && !isSelected && !isActivePlaying ? 0.92 : undefined,
           }}
           onClick={() => !isMuted && handlePadClick(row, col)}
           onContextMenu={e => {
@@ -354,7 +414,29 @@ export function InteractiveGrid({ assignments, selectedEventIndex, onEventClick,
         </div>
       )}
 
-      <div className="inline-block">
+      <div className="inline-block relative">
+        {transitionPaths.length > 0 && (
+          <svg
+            className="absolute inset-0 pointer-events-none overflow-visible z-20"
+            style={{ width: GRID_OFFSET_X + (GRID_STEP * 8), height: GRID_STEP * 8 }}
+            viewBox={`0 0 ${GRID_OFFSET_X + (GRID_STEP * 8)} ${GRID_STEP * 8}`}
+            aria-hidden="true"
+          >
+            {transitionPaths.map(path => (
+              <g key={path.id}>
+                <path
+                  d={path.d}
+                  fill="none"
+                  stroke={path.color}
+                  strokeWidth="2.5"
+                  strokeLinecap="round"
+                  strokeOpacity="0.8"
+                />
+                <circle cx={path.endX} cy={path.endY} r="3" fill={path.color} fillOpacity="0.9" />
+              </g>
+            ))}
+          </svg>
+        )}
         <div className="flex flex-col gap-1">
           {rows}
           {/* Column labels */}
@@ -366,10 +448,10 @@ export function InteractiveGrid({ assignments, selectedEventIndex, onEventClick,
         </div>
         {/* Zone labels */}
         <div className="flex ml-5 mt-1 gap-1">
-          <div className="w-[calc(4*3.5rem+3*0.25rem)] text-center text-[10px] text-blue-400/70 border-t border-blue-500/20 pt-0.5">
+          <div className="w-[calc(4*3.5rem+3*0.25rem)] text-center text-[10px] text-[var(--text-tertiary)] border-t border-[var(--border-subtle)] pt-0.5">
             Left Hand
           </div>
-          <div className="w-[calc(4*3.5rem+3*0.25rem)] text-center text-[10px] text-purple-400/70 border-t border-purple-500/20 pt-0.5">
+          <div className="w-[calc(4*3.5rem+3*0.25rem)] text-center text-[10px] text-[var(--text-tertiary)] border-t border-[var(--border-subtle)] pt-0.5">
             Right Hand
           </div>
         </div>
@@ -377,10 +459,21 @@ export function InteractiveGrid({ assignments, selectedEventIndex, onEventClick,
 
       {/* Summary line */}
       {layout && (
-        <div className="text-[10px] text-gray-500 mt-1">
-          {Object.keys(layout.padToVoice).length} pad{Object.keys(layout.padToVoice).length !== 1 ? 's' : ''} assigned
-          {' / '}
-          {activeStreams.length} active sound{activeStreams.length !== 1 ? 's' : ''}
+        <div className="space-y-1 mt-1">
+          <div className="text-[10px] text-gray-500">
+            {Object.keys(layout.padToVoice).length} pad{Object.keys(layout.padToVoice).length !== 1 ? 's' : ''} assigned
+            {' / '}
+            {activeStreams.length} active sound{activeStreams.length !== 1 ? 's' : ''}
+          </div>
+          {selectedTransition?.next && (
+            <div className="text-[10px] text-sky-300/80">
+              Transition preview: {selectedTransition.timeDelta?.toFixed(3)}s to next event
+              {' · '}
+              {selectedTransition.sharedPadKeys.size} shared pad{selectedTransition.sharedPadKeys.size === 1 ? '' : 's'}
+              {' · '}
+              {selectedTransition.fingerMoves.filter(move => !move.isHold && move.fromPad && move.toPad).length} finger move{selectedTransition.fingerMoves.filter(move => !move.isHold && move.fromPad && move.toPad).length === 1 ? '' : 's'}
+            </div>
+          )}
         </div>
       )}
 
@@ -395,4 +488,12 @@ export function InteractiveGrid({ assignments, selectedEventIndex, onEventClick,
       )}
     </div>
   );
+}
+
+function toGridX(col: number): number {
+  return (col * GRID_STEP) + GRID_CENTER_OFFSET;
+}
+
+function toGridY(row: number): number {
+  return ((7 - row) * GRID_STEP) + GRID_CENTER_OFFSET;
 }
