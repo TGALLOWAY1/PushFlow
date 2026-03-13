@@ -173,7 +173,7 @@ function ProjectContent() {
 
 function EditorContent() {
   const { state, dispatch } = useProject();
-  const { generateFull } = useAutoAnalysis();
+  const { generateFull, generationProgress } = useAutoAnalysis();
   useKeyboardShortcuts();
 
   return (
@@ -228,7 +228,7 @@ function EditorContent() {
 
           {/* Analysis */}
           <div className="p-3 rounded-lg bg-gray-800/30 border border-gray-700">
-            <AnalysisSidePanel generateFull={generateFull} />
+            <AnalysisSidePanel generateFull={generateFull} generationProgress={generationProgress} />
           </div>
 
           {/* Diagnostics */}

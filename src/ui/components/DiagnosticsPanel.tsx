@@ -51,7 +51,7 @@ export function DiagnosticsPanel() {
 
       {/* Hand balance */}
       <div className="space-y-1">
-        <span className="text-[10px] text-gray-500">Hand Balance</span>
+        <span className="text-[10px] text-gray-500 cursor-help" title="Distribution of events between left and right hands. A balanced split (40-60%) is usually ideal.">Hand Balance</span>
         <div className="flex items-center gap-2">
           <span className="text-[10px] text-blue-400 w-6 text-right">{handStats.left}</span>
           <div className="flex-1 h-3 bg-gray-800 rounded overflow-hidden flex">
@@ -75,29 +75,29 @@ export function DiagnosticsPanel() {
 
       {/* Score summary */}
       <div className="grid grid-cols-2 gap-1 text-[10px]">
-        <DiagnosticItem label="Total Score" value={executionPlan.score.toFixed(1)} />
-        <DiagnosticItem label="Avg Drift" value={executionPlan.averageDrift.toFixed(3)} />
-        <DiagnosticItem label="Hard Events" value={String(executionPlan.hardCount)} warn={executionPlan.hardCount > 0} />
-        <DiagnosticItem label="Unplayable" value={String(executionPlan.unplayableCount)} warn={executionPlan.unplayableCount > 0} />
+        <DiagnosticItem label="Total Score" value={executionPlan.score.toFixed(1)} tooltip="Sum of all event costs. Lower is better. <5 easy, 5-15 moderate, >15 difficult." />
+        <DiagnosticItem label="Avg Drift" value={executionPlan.averageDrift.toFixed(3)} tooltip="Average hand displacement per event. <0.5 = compact layout, >1.0 = too spread out." />
+        <DiagnosticItem label="Hard Events" value={String(executionPlan.hardCount)} warn={executionPlan.hardCount > 0} tooltip="Events where the finger assignment is strained — big reaches, fast switches, or awkward grips." />
+        <DiagnosticItem label="Unplayable" value={String(executionPlan.unplayableCount)} warn={executionPlan.unplayableCount > 0} tooltip="Events that cannot be physically played — no valid finger assignment exists." />
       </div>
 
       {/* Average metrics */}
       <div className="space-y-1">
-        <span className="text-[10px] text-gray-500">Avg Cost Breakdown</span>
+        <span className="text-[10px] text-gray-500 cursor-help" title="Average cost per event, broken down by factor. Lower is better for each.">Avg Cost Breakdown</span>
         <div className="grid grid-cols-3 gap-1 text-[10px]">
-          <MetricBar label="Move" value={executionPlan.averageMetrics.movement} max={2} />
-          <MetricBar label="Stretch" value={executionPlan.averageMetrics.stretch} max={2} />
-          <MetricBar label="Drift" value={executionPlan.averageMetrics.drift} max={2} />
-          <MetricBar label="Bounce" value={executionPlan.averageMetrics.bounce} max={2} />
-          <MetricBar label="Fatigue" value={executionPlan.averageMetrics.fatigue} max={2} />
-          <MetricBar label="Cross" value={executionPlan.averageMetrics.crossover} max={2} />
+          <MetricBar label="Move" value={executionPlan.averageMetrics.movement} tooltip="Distance fingers travel between events" />
+          <MetricBar label="Stretch" value={executionPlan.averageMetrics.stretch} tooltip="How far fingers spread within a single grip" />
+          <MetricBar label="Drift" value={executionPlan.averageMetrics.drift} tooltip="Hand center displacement from resting position" />
+          <MetricBar label="Bounce" value={executionPlan.averageMetrics.bounce} tooltip="Same-finger repeated use without alternation" />
+          <MetricBar label="Fatigue" value={executionPlan.averageMetrics.fatigue} tooltip="Accumulated finger workload over time" />
+          <MetricBar label="Cross" value={executionPlan.averageMetrics.crossover} tooltip="Hands crossing over each other's zone" />
         </div>
       </div>
 
       {/* Fatigue */}
       {topFatigue.length > 0 && (
         <div className="space-y-1">
-          <span className="text-[10px] text-gray-500">Finger Fatigue</span>
+          <span className="text-[10px] text-gray-500 cursor-help" title="Accumulated workload per finger. >1.0 means that finger is overworked — consider redistributing.">Finger Fatigue</span>
           <div className="space-y-0.5">
             {topFatigue.map(([finger, fatigue]) => (
               <div key={finger} className="flex items-center gap-1 text-[10px]">
@@ -121,32 +121,38 @@ export function DiagnosticsPanel() {
   );
 }
 
-function DiagnosticItem({ label, value, warn }: { label: string; value: string; warn?: boolean }) {
+function DiagnosticItem({ label, value, warn, tooltip }: { label: string; value: string; warn?: boolean; tooltip?: string }) {
   return (
-    <div className={`px-2 py-1 rounded border text-center ${
-      warn ? 'border-amber-500/30 bg-amber-500/10' : 'border-gray-700 bg-gray-800/50'
-    }`}>
+    <div
+      className={`px-2 py-1 rounded border text-center ${
+        warn ? 'border-amber-500/30 bg-amber-500/10' : 'border-gray-700 bg-gray-800/50'
+      } ${tooltip ? 'cursor-help' : ''}`}
+      title={tooltip}
+    >
       <div className="text-[9px] text-gray-500">{label}</div>
       <div className={`font-mono ${warn ? 'text-amber-400' : 'text-gray-300'}`}>{value}</div>
     </div>
   );
 }
 
-function MetricBar({ label, value, max }: { label: string; value: number; max: number }) {
-  const pct = Math.min((value / max) * 100, 100);
+function MetricBar({ label, value, tooltip }: { label: string; value: number; tooltip?: string }) {
+  // Dynamic max: scale to nearest meaningful ceiling so bars are readable
+  const effectiveMax = Math.max(value * 1.5, 0.5);
+  const pct = Math.min((value / effectiveMax) * 100, 100);
+  const severity = value > 1.0 ? 'high' : value > 0.4 ? 'medium' : 'low';
+  const barColor = severity === 'high' ? '#ef4444' : severity === 'medium' ? '#f97316' : '#22c55e';
+  const severityLabel = severity === 'high' ? 'High' : severity === 'medium' ? 'Moderate' : 'Low';
+
   return (
-    <div className="space-y-0.5">
+    <div className={`space-y-0.5 ${tooltip ? 'cursor-help' : ''}`} title={tooltip ? `${tooltip} (${severityLabel}: ${value.toFixed(2)})` : undefined}>
       <div className="flex justify-between text-gray-500">
         <span>{label}</span>
-        <span>{value.toFixed(2)}</span>
+        <span className={severity === 'high' ? 'text-red-400' : severity === 'medium' ? 'text-orange-400' : 'text-gray-500'}>{value.toFixed(2)}</span>
       </div>
       <div className="h-1.5 bg-gray-800 rounded overflow-hidden">
         <div
           className="h-full rounded"
-          style={{
-            width: `${pct}%`,
-            backgroundColor: pct > 75 ? '#ef4444' : pct > 40 ? '#f97316' : '#22c55e',
-          }}
+          style={{ width: `${pct}%`, backgroundColor: barColor }}
         />
       </div>
     </div>
