@@ -57,6 +57,26 @@ import { type SolverStrategy, type SolverType } from './types';
 import { type SolverConfig, type NeutralPadPositions } from '../../types/engineConfig';
 
 // ============================================================================
+// Beam Score Weights for Previously Diagnostic-Only Costs
+// ============================================================================
+
+/**
+ * Weight for alternation cost in beam score.
+ * Penalizes same-finger rapid repetition — critical for percussion playability.
+ * Value 0.8: strong enough to influence finger choice on fast passages,
+ * mild enough not to override transition/pose costs on slow passages.
+ */
+const ALTERNATION_BEAM_WEIGHT = 0.8;
+
+/**
+ * Weight for hand balance cost in beam score.
+ * Prevents extreme single-hand dominance.
+ * Value 0.3: mild bias toward balanced usage without overriding
+ * legitimate one-hand-only passages.
+ */
+const HAND_BALANCE_BEAM_WEIGHT = 0.3;
+
+// ============================================================================
 // Beam Search Internal Types
 // ============================================================================
 
@@ -154,7 +174,11 @@ function averagePadCentroid(pads: PadCoord[]): { x: number; y: number } {
   return { x: sumX / pads.length, y: sumY / pads.length };
 }
 
-/** Lookahead bonus: rewards grips that leave the hand close to the next group's pads. */
+/**
+ * Lookahead bonus: rewards grips that leave the hand close to the next group's pads.
+ * Strengthened from original (10% cap, 3.0 range) to (20% cap, 4.0 range)
+ * so the bonus can meaningfully influence beam ranking for phrase-level planning.
+ */
 function computeLookaheadBonus(
   gripCentroid: { x: number; y: number },
   nextGroup: PerformanceGroup,
@@ -166,9 +190,9 @@ function computeLookaheadBonus(
   const dy = gripCentroid.y - nextCentroid.y;
   const distToNext = Math.sqrt(dx * dx + dy * dy);
 
-  // Bonus is proportional to proximity, capped at 10% of step cost
-  const proximityBonus = Math.max(0, 3.0 - distToNext) * 0.5;
-  return Math.min(stepCost * 0.1, proximityBonus);
+  // Bonus proportional to proximity, capped at 20% of step cost
+  const proximityBonus = Math.max(0, 4.0 - distToNext) * 0.6;
+  return Math.min(stepCost * 0.2, proximityBonus);
 }
 
 // ============================================================================
@@ -266,6 +290,12 @@ export class BeamSolver implements SolverStrategy {
           constraintPenalty,
         };
         let stepCostForBeam = combinePerformabilityComponents(perfComponents);
+
+        // === ALTERNATION COST (promotes finger variety on rapid passages) ===
+        stepCostForBeam += alternationCost * ALTERNATION_BEAM_WEIGHT;
+
+        // === HAND BALANCE COST (prevents single-hand dominance) ===
+        stepCostForBeam += handBalanceCost * HAND_BALANCE_BEAM_WEIGHT;
 
         // === 1-STEP LOOKAHEAD BONUS ===
         if (nextGroup && stepCostForBeam > 0) {
@@ -428,6 +458,12 @@ export class BeamSolver implements SolverStrategy {
           constraintPenalty: leftConstraintPenalty + rightConstraintPenalty,
         };
         let stepCostForBeam = combinePerformabilityComponents(perfComponents);
+
+        // === ALTERNATION COST (promotes finger variety on rapid passages) ===
+        stepCostForBeam += alternationCost * ALTERNATION_BEAM_WEIGHT;
+
+        // === HAND BALANCE COST (prevents single-hand dominance) ===
+        stepCostForBeam += handBalanceCost * HAND_BALANCE_BEAM_WEIGHT;
 
         // === 1-STEP LOOKAHEAD BONUS ===
         if (nextGroup && stepCostForBeam > 0) {
@@ -737,13 +773,15 @@ export class BeamSolver implements SolverStrategy {
       }
     }
 
-    // When Pose 0 override is present, strengthen the attractor
+    // When Pose 0 override is present, use it as the resting pose.
+    // Stiffness is no longer doubled — the original 2× multiplier over-constrained
+    // the solver when Pose0 was defined, making it reluctant to deviate from rest
+    // even when the music demanded it. The attractor + per-finger-home costs
+    // already provide adequate pull toward the resting pose.
     const effectiveRestingPose = this.neutralPadPositionsOverride
       ? (restingPoseFromNeutralPadPositions(this.neutralPadPositionsOverride as RichNeutralPadPositions) ?? config.restingPose)
       : config.restingPose;
-    const effectiveStiffness = this.neutralPadPositionsOverride
-      ? Math.min(2.0, config.stiffness * 2.0)
-      : config.stiffness;
+    const effectiveStiffness = config.stiffness;
     const effectiveConfig: EngineConfiguration = {
       ...config,
       restingPose: effectiveRestingPose,

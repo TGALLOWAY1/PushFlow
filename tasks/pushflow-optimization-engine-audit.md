@@ -132,11 +132,11 @@ The `multiCandidateGenerator.ts` generates 3 diverse candidates using different 
 | **Outputs** | `ExecutionPlanResult` (with `annealingTrace` for debugging) |
 | **Dependencies** | `beamSolver.ts`, `mutationService.ts`, `mappingCoverage.ts` |
 
-**Configuration:**
+**Configuration (updated):**
 - `INITIAL_TEMP = 500`
-- `COOLING_RATE = 0.99`
-- `ITERATIONS = 1000`
-- `FAST_BEAM_WIDTH = 5` (during search)
+- `COOLING_RATE = 0.997` *(was 0.99)*
+- `ITERATIONS = 3000` *(was 1000)*
+- `FAST_BEAM_WIDTH = 12` *(was 5)* (during search)
 - `FINAL_BEAM_WIDTH = 50` (final evaluation)
 
 **Algorithm:**
@@ -174,9 +174,11 @@ The `multiCandidateGenerator.ts` generates 3 diverse candidates using different 
 | **Outputs** | Mutated `Layout` (new immutable object) |
 | **Dependencies** | None (pure function) |
 
-**Mutations:**
-- **Swap** (50%): Exchange voices between two occupied pads
-- **Move** (50%): Move a voice from an occupied pad to an empty pad
+**Mutations (updated):**
+- **Swap** (35%): Exchange voices between two occupied pads
+- **Move** (35%): Move a voice from an occupied pad to an empty pad
+- **Cluster swap** (15%): Swap two adjacent groups of voices *(new)*
+- **Row/col shift** (15%): Shift all voices in a row/column by ±1 *(new)*
 
 #### 2.5 CandidateRanker (`src/engine/optimization/candidateRanker.ts`)
 
@@ -420,12 +422,12 @@ All scores are 0-1, higher = better:
 | Per-finger home distance | `distance × 0.8` | Per-finger pull to neutral pad |
 | Transition (Fitts's Law) | `distance + speed × 0.5` | Movement + speed cost |
 
-#### Diagnostic-Only Costs (Not in Beam Score)
+#### Active Scoring Costs (Now in Beam Score, Weighted)
 
-| Cost | When Active | Purpose |
-|------|-------------|---------|
-| Alternation penalty (1.5) | `dt < 0.25s` | Detects same-finger repetition |
-| Hand balance penalty | `total ≥ 2 notes` | Detects hand imbalance |
+| Cost | Weight in Beam | When Active | Purpose |
+|------|---------------|-------------|---------|
+| Alternation penalty (1.5) | × 0.8 | `dt < 0.25s` | Penalizes same-finger repetition |
+| Hand balance penalty | × 0.3 | `total ≥ 2 notes` | Prevents hand imbalance |
 
 ---
 
@@ -555,21 +557,13 @@ This is a centroid-based speed check, not a per-finger speed check. The entire h
 
 #### Problems
 
-**P1: Alternation cost is diagnostic-only — this is a significant gap.**
+**P1: ~~Alternation cost is diagnostic-only~~ ✅ FIXED — now included in beam score with weight 0.8.**
 
-Same-finger repetition on short time intervals is one of the most important performance difficulty factors for percussion. A rapid alternation on the same pad using the same finger is genuinely hard. The current system computes this cost but **does not include it in the beam score** (`beamSolver.ts:253` — computed but not added to `stepCostForBeam`).
+Same-finger repetition on short time intervals is one of the most important performance difficulty factors for percussion. A rapid alternation on the same pad using the same finger is genuinely hard. The system now includes `alternationCost × ALTERNATION_BEAM_WEIGHT (0.8)` in `stepCostForBeam` for both single-hand and split-chord paths.
 
-**Impact:** The solver may assign the same finger to consecutive rapid hits when alternation would be easier. This is a critical omission.
+**P2: ~~Hand balance cost is diagnostic-only~~ ✅ FIXED — now included in beam score with weight 0.3.**
 
-**Location:** `costFunction.ts:126-141` (computed), `beamSolver.ts:259-268` (primary score does not include it)
-
-**P2: Hand balance cost is diagnostic-only.**
-
-The solver has no mechanism to encourage balanced hand usage during beam search. One hand can end up playing 90%+ of events if its pose is slightly cheaper for each individual step.
-
-**Impact:** Solutions may be lopsided, with one hand doing nearly everything.
-
-**Location:** `costFunction.ts:151-160` (computed), `beamSolver.ts:259-268` (not in beam score)
+The solver now has a mild hand balance bias during beam search. `handBalanceCost × HAND_BALANCE_BEAM_WEIGHT (0.3)` is added to `stepCostForBeam`, preventing extreme single-hand dominance while still allowing legitimate one-hand passages.
 
 **P3: The three primary components have no weights — implicit scale coupling.**
 
@@ -585,20 +579,13 @@ This means the relative influence of each component depends entirely on their in
 
 Transition cost tends to dominate pose naturalness, which may cause the solver to accept unnatural grips if they reduce movement.
 
-**P4: Stiffness parameter doubles when Pose0 override is present.**
+**P4: ~~Stiffness parameter doubles when Pose0 override is present~~ ✅ FIXED — doubling removed.**
 
-```typescript
-// beamSolver.ts:745-746
-const effectiveStiffness = this.neutralPadPositionsOverride
-  ? Math.min(2.0, config.stiffness * 2.0)
-  : config.stiffness;
-```
+The ad-hoc `Math.min(2.0, config.stiffness * 2.0)` has been replaced with `config.stiffness` directly. The attractor cost and per-finger-home cost already provide adequate pull toward the resting pose without an artificial multiplier.
 
-This ad-hoc doubling may over-constrain the solver when Pose0 is defined, making it reluctant to deviate from the resting position even when the music demands it.
+**P5: ~~The lookahead bonus is very weak~~ ✅ FIXED — strengthened.**
 
-**P5: The lookahead bonus is very weak.**
-
-The 1-step lookahead bonus is capped at 10% of step cost and at most `1.5` units (`max(0, 3.0 - dist) × 0.5`). For a typical step cost of 5-10, this means at most 0.5-1.0 bonus, which is unlikely to change the beam ranking significantly.
+The 1-step lookahead bonus cap increased from 10% → 20% of step cost. Proximity range widened from 3.0 → 4.0 grid units. Multiplier increased from 0.5 → 0.6. Maximum bonus at distance 0 is now 2.4 (was 1.5).
 
 ---
 
@@ -620,35 +607,29 @@ The 1-step lookahead bonus is capped at 10% of step cost and at most `1.5` units
 
 **Beam search is appropriate for execution planning.** The temporal sequential structure of performance events maps naturally to a beam search that maintains K candidate hand states. The alternative (full dynamic programming) would be exponential in the number of grips per step.
 
-**The annealing parameters are likely undertuned.**
+**~~The annealing parameters are likely undertuned.~~** ✅ **FIXED — parameters retuned.**
 
-1. **1000 iterations is low for a 64-cell grid.** With 10-20 occupied pads and 44-54 empty pads, the mutation space is large. 1000 iterations with single-pad mutations explores a tiny fraction of the layout space.
+1. ~~**1000 iterations is low for a 64-cell grid.**~~ ✅ Now 3000 iterations, exploring 3× more of the layout space.
 
-2. **`FAST_BEAM_WIDTH = 5` is very narrow.** During annealing, each layout mutation is evaluated with beam width 5. This means the cost function used to guide annealing is itself noisy — a layout that looks bad with width 5 might look good with width 50. This adds stochastic noise to the annealing acceptance decisions, reducing convergence quality.
+2. ~~**`FAST_BEAM_WIDTH = 5` is very narrow.**~~ ✅ Now 12, providing more reliable cost evaluation and reducing noisy acceptance decisions.
 
-3. **Cooling rate 0.99 with 1000 steps** means final temperature = `500 × 0.99^1000 ≈ 0.02`. This cools to near-zero relatively quickly. The exploration-exploitation tradeoff may be reasonable for 1000 steps, but with more iterations, a slower cooling rate would be better.
+3. ~~**Cooling rate 0.99 with 1000 steps**~~ ✅ Now 0.997 with 3000 steps. Final temp ≈ 0.56, maintaining meaningful exploration through most of the run.
 
-4. **Single-mutation moves are too local.** The system only swaps two pads or moves one pad per iteration. It cannot perform multi-pad reorganizations (e.g., rotating a cluster, reflecting a layout, shifting a group). This limits the search to small perturbations of the initial layout.
+4. ~~**Single-mutation moves are too local.**~~ ✅ Now 4 mutation types: swap (35%), move (35%), cluster swap (15%), row/col shift (15%). Multi-pad mutations enable non-local search.
 
-**Beam width 5 during annealing vs 50 for final evaluation creates a gap.** The layout that appears optimal during annealing (evaluated at width 5) may not be optimal when re-evaluated at width 50. The system mitigates this by re-evaluating the best layout at the end, but intermediate layout decisions were made with low-quality evaluations.
+~~**Beam width 5 during annealing vs 50 for final evaluation creates a gap.**~~ ✅ Gap reduced: beam width 12 during annealing is much closer to the final evaluation width of 50, reducing the evaluation-quality mismatch.
 
 ---
 
 ### 3. Failure Modes
 
-#### FM1: Single-Hand Dominance
+#### FM1: ~~Single-Hand Dominance~~ ✅ MITIGATED
 
-Because hand balance is diagnostic-only, the solver can assign nearly all events to one hand. This happens when:
-- All voices are mapped to pads in one hand's zone
-- One hand's resting pose is closer to the active pads
+~~Because hand balance is diagnostic-only, the solver can assign nearly all events to one hand.~~ Hand balance cost is now included in the beam score (weight 0.3), providing a quadratic penalty for lopsided hand usage. Extreme single-hand dominance is now actively discouraged. Remaining risk: the 0.3 weight is mild, so strongly zone-biased layouts may still lean one-handed.
 
-**Trigger:** A layout with all pads in cols 0-3 (left zone). The left hand's attractor cost will be lower for every event, so the beam consistently picks left hand.
+#### FM2: ~~Same-Finger Rapid Repetition~~ ✅ MITIGATED
 
-#### FM2: Same-Finger Rapid Repetition
-
-Because alternation cost is diagnostic-only, the solver may assign the same finger to consecutive rapid events. This is biomechanically difficult — fast repeated strikes with the same finger are harder than alternating fingers.
-
-**Trigger:** A repeated single note (e.g., hi-hat at 16th notes, 120 BPM = 125ms apart). The solver picks the cheapest grip each time, which may always be the same finger.
+~~Because alternation cost is diagnostic-only, the solver may assign the same finger to consecutive rapid events.~~ Alternation cost is now included in the beam score (weight 0.8), penalizing same-finger repetition on dt < 0.25s. The solver now actively prefers finger variety on fast passages.
 
 #### FM3: Greedy Grip Selection Missing Global Patterns
 
@@ -658,11 +639,9 @@ The beam search with 1-step lookahead can't plan for phrase-level patterns. For 
 
 The lookahead bonus is too weak (capped at 10%) to prevent this.
 
-#### FM4: Annealing Stalls on Local Optima
+#### FM4: ~~Annealing Stalls on Local Optima~~ ✅ MITIGATED
 
-With only swap/move mutations and 1000 iterations, the annealing solver easily gets stuck in local optima. If the initial layout is poor (e.g., a random chromatic mapping), 1000 single-pad mutations are unlikely to discover that a fundamentally different arrangement exists.
-
-**Trigger:** Import a MIDI file with 15+ unique notes scattered across the chromatic scale. The initial chromatic layout will have notes spread across the grid, and 1000 mutations won't reorganize them into ergonomic clusters.
+~~With only swap/move mutations and 1000 iterations, the annealing solver easily gets stuck in local optima.~~ Now mitigated by: 3× more iterations (3000), multi-pad mutations (cluster swap 15%, row/col shift 15%), and wider beam evaluation (width 12) for more reliable cost gradients. The solver can now perform non-local reorganizations and has more iterations to explore the landscape. Remaining risk: truly adversarial initial layouts may still challenge the search.
 
 #### FM5: Split-Chord Heuristic Is Rigid
 
@@ -683,13 +662,13 @@ When the beam produces zero valid expansions (`beamSolver.ts:925-1005`), the eme
 
 ### 4. Missing Constraints
 
-#### MC1: Alternation Preference (Critical)
+#### MC1: ~~Alternation Preference (Critical)~~ ✅ IMPLEMENTED
 
-Same-finger rapid repetition should be penalized in the beam score, not just diagnostics. Recommended: add `alternationCost` to `stepCostForBeam` with a weight of ~0.5-1.0.
+Same-finger rapid repetition is now penalized in the beam score. Added `alternationCost × 0.8` to `stepCostForBeam`.
 
-#### MC2: Hand Balance Bias (Important)
+#### MC2: ~~Hand Balance Bias (Important)~~ ✅ IMPLEMENTED
 
-A mild hand balance term in the beam score would prevent extreme lopsidedness. Recommended: add `handBalanceCost × 0.3` to `stepCostForBeam`.
+A mild hand balance term is now in the beam score. Added `handBalanceCost × 0.3` to `stepCostForBeam`.
 
 #### MC3: Finger Independence Model (Enhancement)
 
@@ -1093,37 +1072,154 @@ These benchmarks should be version-controlled and run automatically on each opti
 
 ### What Is Broken
 
-1. **Alternation cost not in beam score** — same-finger rapid repetition is unpenalized
-2. **Hand balance cost not in beam score** — solutions can be extremely lopsided
-3. **Diagnostic display model doesn't match beam model** — users see costs that don't influence the optimizer
+1. ~~**Alternation cost not in beam score**~~ ✅ **FIXED** — now included with weight 0.8
+2. ~~**Hand balance cost not in beam score**~~ ✅ **FIXED** — now included with weight 0.3
+3. ~~**Diagnostic display model doesn't match beam model**~~ ✅ **FIXED** — alternation and hand balance now in both models
 
 ### What Is Partial / Redundant
 
-1. **Legacy 7-component ObjectiveComponents** exists alongside the 3-component model — two parallel scoring systems
+1. **Legacy 7-component ObjectiveComponents** exists alongside the 3-component model — two parallel scoring systems (architectural debt, but now aligned for key costs)
 2. **Fatigue model** exists but is diagnostic-only, not integrated into search
-3. **HandState-based cost functions** in `legacyCosts.ts` are fully dead code but still exported
-4. **Finger bounce / note history** tracking is dead code
-5. **Lookahead bonus** is implemented but too weak to meaningfully affect results
+3. ~~**HandState-based cost functions** in `legacyCosts.ts` are fully dead code but still exported~~ ✅ **FIXED** — exports removed
+4. **Finger bounce / note history** tracking is dead code (in `legacyCosts.ts`, no longer exported)
+5. ~~**Lookahead bonus** is implemented but too weak to meaningfully affect results~~ ✅ **FIXED** — strengthened to 20% cap, 4.0 range
 
 ### Highest-Leverage Fixes
 
-1. **Add alternation cost to beam score** — highest-impact single change. Prevents irrational same-finger repetition on fast passages. Implementation: add `alternationCost × weight` to `stepCostForBeam` in `beamSolver.ts:268`.
+1. **~~Add alternation cost to beam score~~** ✅ **IMPLEMENTED** — highest-impact single change. Prevents irrational same-finger repetition on fast passages. Implementation: added `alternationCost × 0.8` to `stepCostForBeam` in `beamSolver.ts` (both single-hand and split-chord paths).
 
-2. **Add hand balance cost to beam score** — prevents one-hand dominance. Implementation: add `handBalanceCost × weight` to `stepCostForBeam`.
+2. **~~Add hand balance cost to beam score~~** ✅ **IMPLEMENTED** — prevents one-hand dominance. Implementation: added `handBalanceCost × 0.3` to `stepCostForBeam` in `beamSolver.ts`.
 
-3. **Increase annealing iterations and beam width** — 1000 iterations with beam width 5 is insufficient for meaningful layout optimization. Recommended: 3000+ iterations, beam width 10-15 during annealing.
+3. **~~Increase annealing iterations and beam width~~** ✅ **IMPLEMENTED** — 1000 iterations with beam width 5 was insufficient for meaningful layout optimization. Changed to: `ITERATIONS = 3000`, `FAST_BEAM_WIDTH = 12`, `COOLING_RATE = 0.997` (final temp ≈ 0.56 instead of ≈ 0.02).
 
-4. **Add multi-pad mutation operators** — cluster swap, row shift, reflection. Allows annealing to explore more diverse layouts.
+4. **~~Add multi-pad mutation operators~~** ✅ **IMPLEMENTED** — cluster swap (15%), row/column shift (15%) added alongside existing swap (35%) and move (35%). Allows annealing to explore non-local layout reorganizations.
 
-5. **Unify diagnostic and primary scoring models** — either fold alternation/balance into the primary model or clearly document why they're excluded.
+5. **~~Unify diagnostic and primary scoring models~~** ✅ **IMPLEMENTED** — alternation and hand balance costs are now included in the primary beam score (weighted), unifying the diagnostic and primary models. Comments updated to reflect the change.
 
-### Suggested Implementation Order
+### Additional Fixes Implemented
 
-1. **Add alternation cost to beam score** (low risk, high impact, ~30 min)
-2. **Add hand balance cost to beam score** (low risk, moderate impact, ~30 min)
-3. **Increase annealing parameters** (low risk, moderate impact, ~15 min)
-4. **Add beam search trace for debugging** (moderate effort, high debuggability value)
-5. **Add multi-pad mutation operators** (moderate effort, moderate impact)
-6. **Integrate fatigue model** into beam score (moderate effort, quality improvement)
-7. **Unify scoring models** (higher effort, architectural cleanup)
-8. **Remove dead code** in `legacyCosts.ts` (low effort, cleanup)
+6. **~~Strengthen lookahead bonus~~** ✅ **IMPLEMENTED** — Cap increased from 10% → 20% of step cost. Proximity range widened from 3.0 → 4.0 grid units. Multiplier increased from 0.5 → 0.6. The bonus can now meaningfully influence beam ranking for phrase-level planning.
+
+7. **~~Remove stiffness doubling hack~~** ✅ **IMPLEMENTED** — The ad-hoc `stiffness × 2.0` multiplier when Pose0 was present has been removed. It over-constrained the solver, making it reluctant to deviate from the resting position even when the music demanded it.
+
+8. **~~Remove dead legacy code~~** ✅ **IMPLEMENTED** — Removed re-exports of dead `legacyCosts.ts` functions (`calculateMovementCost`, `calculateStretchPenalty`, `calculateDriftPenalty`, `calculateCrossoverCost`, `clearNoteHistory`, `recordNoteAssignment`, `getFingerBouncePenalty`, `calculateGripStretchCost`, `calculateTotalGripCost`, `handStateToHandPose`) from `costFunction.ts` and `engine/index.ts`. The functions remain in `legacyCosts.ts` for reference but are no longer publicly exported.
+
+### Suggested Implementation Order (remaining)
+
+1. **Add beam search trace for debugging** (moderate effort, high debuggability value)
+2. **Integrate fatigue model** into beam score (moderate effort, quality improvement)
+
+---
+
+## Phase 4 — Implementation Changelog
+
+### Change 1: Alternation Cost Added to Beam Score
+
+**Files modified:** `src/engine/solvers/beamSolver.ts`, `src/engine/evaluation/costFunction.ts`
+
+**What changed:**
+- Added `ALTERNATION_BEAM_WEIGHT = 0.8` constant to beamSolver.ts
+- Added `stepCostForBeam += alternationCost * ALTERNATION_BEAM_WEIGHT` to both `expandNodeForGroup()` and `expandNodeForSplitChord()` methods
+- Updated costFunction.ts comments to reflect alternation is no longer diagnostic-only
+
+**Rationale:** Same-finger rapid repetition was unpenalized in the beam score. This is one of the most important performance difficulty factors for percussion. A rapid alternation on the same pad using the same finger is genuinely hard. The solver now actively avoids same-finger repetition on fast passages (dt < 0.25s).
+
+**Weight justification:** 0.8 is strong enough to shift finger choice on 16th-note passages (where alternation penalty ≈ 1.2 with recency factor) but mild enough not to override transition/pose costs on slower passages where same-finger reuse is acceptable.
+
+---
+
+### Change 2: Hand Balance Cost Added to Beam Score
+
+**Files modified:** `src/engine/solvers/beamSolver.ts`, `src/engine/evaluation/costFunction.ts`
+
+**What changed:**
+- Added `HAND_BALANCE_BEAM_WEIGHT = 0.3` constant to beamSolver.ts
+- Added `stepCostForBeam += handBalanceCost * HAND_BALANCE_BEAM_WEIGHT` to both expansion methods
+- Updated costFunction.ts comments
+
+**Rationale:** Without this, the solver could assign 90%+ of events to one hand when its resting pose was slightly cheaper for each individual step. The quadratic penalty (`2.0 × deviation²`) now scales by 0.3 in the beam, providing a mild but meaningful push toward balanced hand usage.
+
+**Weight justification:** 0.3 is low enough to allow legitimate one-hand passages (e.g., a left-hand-only groove) but high enough to break ties in favor of distributing work across both hands.
+
+---
+
+### Change 3: Annealing Parameters Increased
+
+**File modified:** `src/engine/optimization/annealingSolver.ts`
+
+**What changed:**
+| Parameter | Before | After | Rationale |
+|-----------|--------|-------|-----------|
+| `ITERATIONS` | 1000 | 3000 | 3× more iterations to explore the layout space. With 10-20 occupied pads on 64 cells, 1000 single-pad mutations explored a tiny fraction. |
+| `FAST_BEAM_WIDTH` | 5 | 12 | Reduces noise in cost evaluation during annealing. Width 5 was too narrow — a layout looking bad at width 5 might look good at width 50. Width 12 provides a more reliable gradient. |
+| `COOLING_RATE` | 0.99 | 0.997 | Slower cooling to match the longer iteration count. Final temp: 500 × 0.997^3000 ≈ 0.56, maintaining meaningful exploration through most of the run (vs 500 × 0.99^1000 ≈ 0.02 before). |
+
+---
+
+### Change 4: Multi-Pad Mutation Operators Added
+
+**File modified:** `src/engine/optimization/mutationService.ts`
+
+**What changed:**
+- `applyRandomMutation()` now uses 4 mutation types with probabilities:
+  - **Swap** (35%): Same as before — exchange voices between two occupied pads
+  - **Move** (35%): Same as before — relocate voice to an empty pad
+  - **Cluster swap** (15%): Pick two occupied pads, find each one's nearest neighbor, swap both pairs. Moves 2-pad groups atomically.
+  - **Row/column shift** (15%): Pick a row or column with occupied pads, shift all voices by ±1 position. Enables linear group translations.
+
+**New functions added:**
+- `applyClusterSwapMutation()` — picks two cluster seeds, finds nearest neighbors, performs atomic double-swap
+- `applyShiftMutation()` — picks a random row/col, validates shift feasibility, applies via `applyMultiMove()`
+- `applyMultiMove()` — atomic multi-pad relocation (clear all sources first, then place at targets)
+- `findNearestOccupied()` — helper for cluster mutation
+
+**Rationale:** The previous single-mutation-only approach (swap or move one pad) was too local. The annealing solver could not discover that fundamentally different arrangements existed — it could only make small perturbations. Multi-pad mutations enable non-local search: rotating clusters, shifting rows, reorganizing zones.
+
+---
+
+### Change 5: Lookahead Bonus Strengthened
+
+**File modified:** `src/engine/solvers/beamSolver.ts`
+
+**What changed:**
+| Parameter | Before | After |
+|-----------|--------|-------|
+| Proximity range | 3.0 grid units | 4.0 grid units |
+| Proximity multiplier | 0.5 | 0.6 |
+| Cap | 10% of step cost | 20% of step cost |
+| Max bonus (at distance 0) | 1.5 | 2.4 |
+
+**Rationale:** The previous lookahead was too weak (at most 0.5-1.0 bonus on typical steps of 5-10) to meaningfully influence beam ranking. With the strengthened bonus, the solver can better plan for phrase-level patterns — e.g., preferring a grip that leaves the hand near the next event group even if it costs slightly more in the current step.
+
+---
+
+### Change 6: Stiffness Doubling Hack Removed
+
+**File modified:** `src/engine/solvers/beamSolver.ts`
+
+**What changed:**
+- Removed `Math.min(2.0, config.stiffness * 2.0)` when `neutralPadPositionsOverride` is present
+- Now uses `config.stiffness` directly in all cases
+
+**Rationale:** The 2× stiffness multiplier when Pose0 was defined over-constrained the solver. It made the hand reluctant to deviate from the resting position even when the music demanded movement to distant pads. The attractor cost and per-finger-home cost already provide adequate pull toward the resting pose without the artificial multiplier.
+
+---
+
+### Change 7: Dead Legacy Code Exports Removed
+
+**Files modified:** `src/engine/evaluation/costFunction.ts`, `src/engine/index.ts`
+
+**What changed:**
+- Removed re-exports of 10 deprecated functions from `costFunction.ts`:
+  `calculateMovementCost`, `calculateStretchPenalty`, `calculateDriftPenalty`, `calculateCrossoverCost`, `clearNoteHistory`, `recordNoteAssignment`, `getFingerBouncePenalty`, `calculateGripStretchCost`, `calculateTotalGripCost`, `handStateToHandPose`
+- Removed `export { calculateGripStretchCost }` from `engine/index.ts`
+
+**Rationale:** These functions were dead code — HandState-based scoring replaced by HandPose-based scoring, finger bounce/note history unused, grip stretch folded into `calculatePoseNaturalness()`. No consumer in the current codebase (src/ or test/) referenced them. They remain in `legacyCosts.ts` as reference documentation.
+
+---
+
+### Validation
+
+- **TypeScript:** `tsc --noEmit` passes cleanly (0 errors)
+- **Tests:** All 234 existing tests pass (13 test files)
+- **No regressions:** Same test suite, same pass count before and after changes
