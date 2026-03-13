@@ -67,7 +67,7 @@ export function TimelinePanel() {
   }
 
   return (
-    <div className="rounded-lg bg-gray-800/30 border border-gray-700 overflow-hidden">
+    <div className="rounded-lg glass-panel overflow-hidden relative z-40">
       {/* Header */}
       <div className="w-full flex items-center justify-between px-3 py-2 text-xs hover:bg-gray-800/50 transition-colors">
         <button

@@ -222,18 +222,18 @@ function EditorContent() {
         {/* Right: Side panel */}
         <div className="flex-1 min-w-0 space-y-3 overflow-y-auto max-h-[calc(100vh-120px)]">
           {/* Voice Palette */}
-          <div className="p-3 rounded-lg bg-gray-800/30 border border-gray-700">
+          <div className="p-3 rounded-lg glass-panel">
             <VoicePalette />
           </div>
 
           {/* Analysis */}
-          <div className="p-3 rounded-lg bg-gray-800/30 border border-gray-700">
+          <div className="p-3 rounded-lg glass-panel">
             <AnalysisSidePanel generateFull={generateFull} generationProgress={generationProgress} />
           </div>
 
           {/* Diagnostics */}
           {state.analysisResult && (
-            <div className="p-3 rounded-lg bg-gray-800/30 border border-gray-700">
+            <div className="p-3 rounded-lg glass-panel">
               <DiagnosticsPanel />
             </div>
           )}

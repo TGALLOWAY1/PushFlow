@@ -78,7 +78,7 @@ export function EventDetailPanel() {
   };
 
   return (
-    <div className="p-3 bg-gray-800/30 rounded-lg border border-gray-700 space-y-2">
+    <div className="p-3 rounded-lg glass-panel space-y-2">
       <div className="flex items-center justify-between">
         <h4 className="text-xs text-gray-500 font-medium">
           Selected Event

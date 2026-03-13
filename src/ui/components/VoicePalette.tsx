@@ -116,7 +116,7 @@ function StreamRow({
       className={`
         flex items-center gap-1.5 px-2 py-1.5 rounded-md text-xs
         border border-transparent hover:border-gray-700
-        cursor-grab active:cursor-grabbing
+        cursor-grab active:cursor-grabbing active:scale-95 transition-transform duration-150
         ${stream.muted ? 'opacity-40' : ''}
       `}
       draggable

@@ -280,8 +280,8 @@ export function InteractiveGrid({ assignments, selectedEventIndex, onEventClick,
             ${isDragOver ? 'ring-2 ring-blue-400/60 scale-105' : ''}
             ${isDragSource ? 'opacity-30' : ''}
             ${isMuted ? 'opacity-30 pointer-events-none' : ''}
-            ${!voice ? 'hover:border-gray-600' : 'hover:scale-[1.02]'}
-            ${isMuted ? 'cursor-default' : 'cursor-pointer'}
+            ${!voice ? 'hover:border-gray-600 shadow-[inset_0_2px_4px_rgba(0,0,0,0.4)]' : 'hover:scale-[1.02] shadow-sm'}
+            ${isMuted ? 'cursor-default' : 'cursor-pointer active:scale-95'}
           `}
           style={{
             backgroundColor: isDragOver ? 'rgba(59,130,246,0.15)' : bgColor,
