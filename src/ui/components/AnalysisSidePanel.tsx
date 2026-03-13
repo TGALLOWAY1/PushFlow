@@ -10,12 +10,14 @@ import { useProject } from '../state/ProjectContext';
 import { DifficultyHeatmap } from './DifficultyHeatmap';
 import { CandidateCompare } from './CandidateCompare';
 import { type CandidateSolution } from '../../types/candidateSolution';
+import { type GenerationMode } from '../hooks/useAutoAnalysis';
 
 type PanelTab = 'analysis' | 'compare';
 
-export function AnalysisSidePanel({ generateFull, generationProgress }: { generateFull: () => Promise<void>; generationProgress?: string | null }) {
+export function AnalysisSidePanel({ generateFull, generationProgress }: { generateFull: (mode?: GenerationMode) => Promise<void>; generationProgress?: string | null }) {
   const { state, dispatch } = useProject();
   const [tab, setTab] = useState<PanelTab>('analysis');
+  const [generationMode, setGenerationMode] = useState<GenerationMode>('fast');
   const compareId = state.compareCandidateId;
   const setCompareId = (id: string | null) => dispatch({ type: 'SET_COMPARE_CANDIDATE', payload: id });
 
@@ -47,14 +49,25 @@ export function AnalysisSidePanel({ generateFull, generationProgress }: { genera
           </button>
         )}
         <div className="flex-1" />
-        {/* Generate button — auto-assigns pads from instrument grid if layout is empty */}
+        {/* Mode selector + Generate button */}
+        <select
+          className="bg-gray-800 border border-gray-700 text-gray-300 text-[11px] rounded px-1 py-1 cursor-pointer"
+          value={generationMode}
+          onChange={(e) => setGenerationMode(e.target.value as GenerationMode)}
+          disabled={generateDisabled}
+          title="Quick: fast optimization (~3s). Thorough: deep optimization with restarts (~10-15s). Auto: chooses based on complexity."
+        >
+          <option value="fast">Quick</option>
+          <option value="deep">Thorough</option>
+          <option value="auto">Auto</option>
+        </select>
         <button
           className={`px-2 py-1 rounded text-[11px] transition-colors ${
             generateDisabled
               ? 'bg-gray-700 text-gray-500 cursor-not-allowed'
               : 'bg-blue-600 hover:bg-blue-500 text-white'
           }`}
-          onClick={generateFull}
+          onClick={() => generateFull(generationMode)}
           disabled={generateDisabled}
           title="Generate 3 layout candidates (auto-assigns pads if none are set)"
         >

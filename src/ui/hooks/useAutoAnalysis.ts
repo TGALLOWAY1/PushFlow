@@ -16,13 +16,16 @@ import { useEffect, useRef, useCallback, useState } from 'react';
 import { useProject } from '../state/ProjectContext';
 import { getActivePerformance, getActiveLayout, getActiveStreams, type SoundStream } from '../state/projectState';
 import { createBeamSolver } from '../../engine/solvers/beamSolver';
-import { analyzeDifficulty, computeTradeoffProfile } from '../../engine/evaluation/difficultyScoring';
+import { analyzeDifficulty, computeTradeoffProfile, classifyOptimizationDifficulty } from '../../engine/evaluation/difficultyScoring';
 import { generateCandidates } from '../../engine/optimization/multiCandidateGenerator';
 import { generateId } from '../../utils/idGenerator';
-import { type SolverConfig } from '../../types/engineConfig';
+import { type SolverConfig, type OptimizationMode } from '../../types/engineConfig';
 import { type Performance, type InstrumentConfig } from '../../types/performance';
 import { type FingerType } from '../../types/fingerModel';
 import { type Layout } from '../../types/layout';
+
+/** User-facing mode selection: 'auto' delegates to classifyOptimizationDifficulty. */
+export type GenerationMode = OptimizationMode | 'auto';
 
 const AUTO_ANALYSIS_DEBOUNCE_MS = 1000;
 
@@ -194,7 +197,7 @@ export function useAutoAnalysis() {
   }, [state.analysisStale, state.isProcessing, state.soundStreams, state.layouts, state.activeLayoutId, state.instrumentConfig, state.sections, state.engineConfig, dispatch]);
 
   // Full multi-candidate generation (manual trigger)
-  const generateFull = useCallback(async () => {
+  const generateFull = useCallback(async (mode: GenerationMode = 'fast') => {
     const activeStreams = getActiveStreams(state);
     const layout = getActiveLayout(state);
     if (activeStreams.length === 0 || !layout) return;
@@ -216,14 +219,20 @@ export function useAutoAnalysis() {
         dispatch({ type: 'BULK_ASSIGN_PADS', payload: effectiveLayout.padToVoice });
       }
 
+      // Resolve 'auto' mode by classifying the performance
+      const resolvedMode: OptimizationMode = mode === 'auto'
+        ? classifyOptimizationDifficulty(performance)
+        : mode;
+
       // Build hard constraints to pass through to each candidate's solver run
       const manualAssignments = buildManualAssignments(performance, effectiveLayout);
 
-      setGenerationProgress('Generating 3 candidates...');
+      const modeLabel = resolvedMode === 'deep' ? 'Thorough' : 'Quick';
+      setGenerationProgress(`${modeLabel} optimization: generating 3 candidates...`);
 
       const candidates = await generateCandidates(performance, null, {
         count: 3,
-        useAnnealing: false,
+        optimizationMode: resolvedMode,
         engineConfig: state.engineConfig,
         instrumentConfig: state.instrumentConfig,
         sections: state.sections,

@@ -13,6 +13,8 @@ import { type Section } from '../../types/performanceStructure';
 import { type VoiceProfile, type MusicalRole } from '../../types/performanceStructure';
 import { type DifficultyAnalysis, type PassageDifficulty, type TradeoffProfile } from '../../types/candidateSolution';
 import { type PassageDifficultyResult, scorePassagesFromSections, scorePassagesFixedWindow } from './passageDifficulty';
+import { type Performance } from '../../types/performance';
+import { type OptimizationMode } from '../../types/engineConfig';
 
 // ============================================================================
 // Difficulty Classification
@@ -228,6 +230,102 @@ export function computeTradeoffProfile(
     learnability,
     robustness,
   };
+}
+
+// ============================================================================
+// Optimization Difficulty Pre-Classification
+// ============================================================================
+
+/**
+ * Classifies a performance's optimization difficulty to auto-select Fast or Deep mode.
+ *
+ * Uses lightweight heuristics (no solver execution required):
+ * - Voice count: more unique notes → more layout combinations → harder
+ * - Peak density: events per second in the densest 1s window → harder transitions
+ * - Max polyphony: simultaneous events → harder hand/finger allocation
+ *
+ * Weighted scoring: ≥3 → deep, <3 → fast.
+ */
+export function classifyOptimizationDifficulty(
+  performance: Performance
+): OptimizationMode {
+  const events = performance.events;
+  if (events.length === 0) return 'fast';
+
+  // Voice count
+  const uniqueNotes = new Set(events.map(e => e.noteNumber));
+  const voiceCount = uniqueNotes.size;
+
+  // Peak density (events per second, sliding 1s window)
+  const peakDensity = computePeakDensity(events);
+
+  // Max polyphony (max simultaneous events)
+  const maxPoly = computeMaxPolyphony(events);
+
+  // Weighted score
+  let score = 0;
+  if (voiceCount > 8) score += 2;
+  else if (voiceCount > 4) score += 1;
+
+  if (peakDensity > 8) score += 2;
+  else if (peakDensity > 4) score += 1;
+
+  if (maxPoly > 4) score += 2;
+  else if (maxPoly > 2) score += 1;
+
+  return score >= 3 ? 'deep' : 'fast';
+}
+
+/**
+ * Computes the peak event density (events per second) across the performance.
+ * Uses a sliding 1-second window.
+ */
+function computePeakDensity(
+  events: Performance['events']
+): number {
+  if (events.length === 0) return 0;
+
+  const sorted = [...events].sort((a, b) => a.startTime - b.startTime);
+  let maxDensity = 0;
+  let windowStart = 0;
+
+  for (let i = 0; i < sorted.length; i++) {
+    // Advance windowStart until we're within 1s of events[i]
+    while (windowStart < i && sorted[i].startTime - sorted[windowStart].startTime > 1.0) {
+      windowStart++;
+    }
+    const density = i - windowStart + 1;
+    if (density > maxDensity) maxDensity = density;
+  }
+
+  return maxDensity;
+}
+
+/**
+ * Computes the maximum polyphony (simultaneous events) in the performance.
+ * Events starting within 10ms of each other are considered simultaneous.
+ */
+function computeMaxPolyphony(
+  events: Performance['events']
+): number {
+  if (events.length === 0) return 0;
+
+  const sorted = [...events].sort((a, b) => a.startTime - b.startTime);
+  let maxPoly = 1;
+  let currentPoly = 1;
+  let groupStart = 0;
+
+  for (let i = 1; i < sorted.length; i++) {
+    if (sorted[i].startTime - sorted[groupStart].startTime <= 0.01) {
+      currentPoly++;
+    } else {
+      groupStart = i;
+      currentPoly = 1;
+    }
+    if (currentPoly > maxPoly) maxPoly = currentPoly;
+  }
+
+  return maxPoly;
 }
 
 // ============================================================================
