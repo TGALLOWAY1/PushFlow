@@ -72,4 +72,63 @@ export interface SolverConfig {
   neutralPadPositionsOverride?: NeutralPadPositions | null;
   mappingResolverMode?: 'strict' | 'allow-fallback';
   seed?: number;
+  annealingConfig?: AnnealingConfig;
 }
+
+// ============================================================================
+// Optimization Mode and Annealing Configuration
+// ============================================================================
+
+/** Optimization mode: controls solver intensity. */
+export type OptimizationMode = 'fast' | 'deep';
+
+/**
+ * AnnealingConfig: Parameters for the simulated annealing solver.
+ *
+ * Fast mode uses conservative defaults matching the original hardcoded values.
+ * Deep mode increases budget and adds restarts for harder performances.
+ */
+export interface AnnealingConfig {
+  /** Number of SA iterations per restart. */
+  iterations: number;
+  /** Initial temperature for Metropolis criterion. */
+  initialTemp: number;
+  /** Cooling rate applied each iteration (close to 1.0 = slow cooling). */
+  coolingRate: number;
+  /** Number of SA restarts (0 = single trajectory). */
+  restartCount: number;
+  /** Beam width for fast cost evaluation during SA. */
+  fastBeamWidth: number;
+  /** Beam width for final high-quality evaluation. */
+  finalBeamWidth: number;
+  /** Whether to include zone transfer mutation operator. */
+  useZoneTransfer?: boolean;
+}
+
+/**
+ * Fast annealing configuration.
+ * Matches the original hardcoded values exactly for backward compatibility.
+ */
+export const FAST_ANNEALING_CONFIG: AnnealingConfig = {
+  iterations: 3000,
+  initialTemp: 500,
+  coolingRate: 0.997,
+  restartCount: 0,
+  fastBeamWidth: 12,
+  finalBeamWidth: 50,
+  useZoneTransfer: false,
+};
+
+/**
+ * Deep annealing configuration.
+ * More iterations, restarts, wider beam, and zone transfer for complex performances.
+ */
+export const DEEP_ANNEALING_CONFIG: AnnealingConfig = {
+  iterations: 8000,
+  initialTemp: 500,
+  coolingRate: 0.9985,
+  restartCount: 3,
+  fastBeamWidth: 16,
+  finalBeamWidth: 50,
+  useZoneTransfer: true,
+};

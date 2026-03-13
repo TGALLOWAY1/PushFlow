@@ -71,6 +71,10 @@ export interface CandidateMetadata {
   seed: number;
   /** Generation time in ms. */
   generationTimeMs?: number;
+  /** Optimization mode used for this candidate. */
+  optimizationMode?: import('./engineConfig').OptimizationMode;
+  /** Human-readable optimization summary. */
+  optimizationSummary?: string;
 }
 
 /**

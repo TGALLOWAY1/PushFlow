@@ -88,6 +88,45 @@ export interface AnnealingIterationSnapshot {
   bounceSum: number;
   fatigueSum: number;
   crossoverSum: number;
+  /** Which restart this snapshot belongs to (0 = initial run). */
+  restartIndex?: number;
+}
+
+/**
+ * SolverTelemetry: Instrumentation data for debugging and quality assessment.
+ */
+export interface SolverTelemetry {
+  /** Optimization mode used. */
+  optimizationMode: import('./engineConfig').OptimizationMode;
+  /** Total wall-clock time in ms. */
+  wallClockMs: number;
+  /** Total iterations completed across all restarts. */
+  iterationsCompleted: number;
+  /** Number of restarts performed. */
+  restartCount: number;
+  /** Best cost at the end of each restart. */
+  restartBestCosts: number[];
+  /** Total accepted mutations. */
+  totalAccepted: number;
+  /** Total rejected mutations. */
+  totalRejected: number;
+  /** Total invalid mutations (produced invalid layouts). */
+  totalInvalid: number;
+  /** Acceptance rate: accepted / (accepted + rejected). */
+  acceptanceRate: number;
+  /** How many times global best was updated. */
+  improvementCount: number;
+  /** improvementCount / iterationsCompleted. */
+  improvementRate: number;
+  /** (initialCost - finalCost) / initialCost. */
+  finalCostImprovement: number;
+  /** Cost at iteration milestones. */
+  costAtMilestones: {
+    pct25: number;
+    pct50: number;
+    pct75: number;
+    pct100: number;
+  };
 }
 
 /**
@@ -125,5 +164,6 @@ export interface ExecutionPlanResult {
     beamWidthUsed?: number;
     objectiveTotal?: number;
     objectiveComponentsSummary?: Record<string, number>;
+    solverTelemetry?: SolverTelemetry;
   };
 }
