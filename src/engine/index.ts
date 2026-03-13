@@ -92,8 +92,6 @@ export {
   objectiveToDifficultyBreakdown,
 } from './evaluation/objective';
 
-// Evaluation (legacy — re-exported from diagnostics/legacyCosts.ts)
-export { calculateGripStretchCost } from './diagnostics/legacyCosts';
 export {
   computeEventAnatomicalStretchScore,
   computeCompositeDifficultyScore,

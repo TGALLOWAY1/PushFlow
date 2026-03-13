@@ -33,14 +33,29 @@ import { createSeededRng } from '../../utils/seededRng';
 /** Initial temperature — higher values allow more exploration early on. */
 const INITIAL_TEMP = 500;
 
-/** Cooling rate applied each iteration (close to 1.0 = slow cooling). */
-const COOLING_RATE = 0.99;
+/**
+ * Cooling rate applied each iteration (close to 1.0 = slow cooling).
+ * With 3000 iterations: final temp = 500 × 0.997^3000 ≈ 0.56
+ * This keeps meaningful exploration longer than the previous 0.99 × 1000 schedule.
+ */
+const COOLING_RATE = 0.997;
 
-/** Number of iterations to run the annealing loop. */
-const ITERATIONS = 1000;
+/**
+ * Number of iterations to run the annealing loop.
+ * Increased from 1000 → 3000 to explore more of the layout space.
+ * With 10-20 occupied pads on a 64-cell grid, single-pad mutations
+ * need sufficient iterations to discover non-local improvements.
+ */
+const ITERATIONS = 3000;
 
-/** Beam width for fast cost evaluation during annealing. */
-const FAST_BEAM_WIDTH = 5;
+/**
+ * Beam width for fast cost evaluation during annealing.
+ * Increased from 5 → 12 to reduce noise in the cost function used
+ * to guide annealing acceptance decisions. Width 5 was too narrow —
+ * layouts that appear poor at width 5 may be good at width 50,
+ * creating unreliable gradients for the annealing search.
+ */
+const FAST_BEAM_WIDTH = 12;
 
 /** Beam width for final high-quality evaluation. */
 const FINAL_BEAM_WIDTH = 50;

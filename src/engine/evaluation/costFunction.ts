@@ -6,7 +6,7 @@
  *   - calculateTransitionCost: Fitts's Law movement difficulty
  *   - FALLBACK_GRIP_PENALTY: hard constraint penalty for Tier 3 grips
  *
- * Diagnostic-only costs (computed for display, not in beam score):
+ * Active scoring costs (included in beam score with configurable weights):
  *   - calculateAlternationCost: same-finger repetition penalty
  *   - calculateHandBalanceCost: left/right distribution penalty
  *
@@ -47,19 +47,6 @@ export {
   HAND_BALANCE_MIN_NOTES,
 };
 
-// Re-export legacy functions for backward compatibility
-export {
-  calculateMovementCost,
-  calculateStretchPenalty,
-  calculateDriftPenalty,
-  calculateCrossoverCost,
-  clearNoteHistory,
-  recordNoteAssignment,
-  getFingerBouncePenalty,
-  calculateGripStretchCost,
-  calculateTotalGripCost,
-  handStateToHandPose,
-} from '../diagnostics/legacyCosts';
 
 /** Minimum time delta to prevent division by zero. */
 const MIN_TIME_DELTA = 0.001;
@@ -116,12 +103,13 @@ export function calculatePoseNaturalness(
 }
 
 // ============================================================================
-// Alternation Cost (Diagnostic Only)
+// Alternation Cost
 // ============================================================================
 
 /**
  * Alternation penalty: penalizes same-finger repetition on short dt.
- * Computed for diagnostic display but not included in primary beam score.
+ * Included in beam score (weighted by ALTERNATION_BEAM_WEIGHT) to prevent
+ * irrational same-finger rapid repetition on fast passages.
  */
 export function calculateAlternationCost(
   prevAssignments: Array<{ hand: 'left' | 'right'; finger: FingerType }>,
@@ -141,12 +129,13 @@ export function calculateAlternationCost(
 }
 
 // ============================================================================
-// Hand Balance Cost (Diagnostic Only)
+// Hand Balance Cost
 // ============================================================================
 
 /**
  * Hand balance penalty: quadratic penalty when leftShare deviates from target.
- * Computed for diagnostic display but not included in primary beam score.
+ * Included in beam score (weighted by HAND_BALANCE_BEAM_WEIGHT) to prevent
+ * extreme single-hand dominance.
  */
 export function calculateHandBalanceCost(
   leftCount: number,
