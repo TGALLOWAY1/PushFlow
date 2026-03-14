@@ -214,6 +214,9 @@ function validateProjectState(parsed: unknown): ProjectState {
     engineConfig: (p.engineConfig && typeof p.engineConfig === 'object')
       ? p.engineConfig as ProjectState['engineConfig']
       : base.engineConfig,
+    voiceConstraints: (p.voiceConstraints && typeof p.voiceConstraints === 'object' && !Array.isArray(p.voiceConstraints))
+      ? p.voiceConstraints as ProjectState['voiceConstraints']
+      : {},
     performanceLanes,
     laneGroups: Array.isArray(p.laneGroups) ? p.laneGroups as ProjectState['laneGroups'] : [],
     sourceFiles: sourceFiles.length > 0 || performanceLanes.length === 0

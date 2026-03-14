@@ -73,6 +73,9 @@ export interface ProjectState {
   // Config
   engineConfig: EngineConfiguration;
 
+  // Voice-level constraints (hand/finger per voice, key is stream ID)
+  voiceConstraints: Record<string, { hand?: 'left' | 'right'; finger?: string }>;
+
   // Performance Lanes (pre-editor authoring data)
   performanceLanes: PerformanceLane[];
   laneGroups: LaneGroup[];
@@ -135,6 +138,7 @@ export type ProjectAction =
   | { type: 'RENAME_SOUND'; payload: { streamId: string; name: string } }
   | { type: 'TOGGLE_MUTE'; payload: string }
   | { type: 'SET_SOUND_COLOR'; payload: { streamId: string; color: string } }
+  | { type: 'SET_VOICE_CONSTRAINT'; payload: { streamId: string; hand?: 'left' | 'right' | null; finger?: string | null } }
 
   // Layout editing
   | { type: 'ADD_LAYOUT'; payload: Layout }
@@ -261,6 +265,20 @@ export function projectReducer(state: ProjectState, action: ProjectAction): Proj
           s.id === action.payload.streamId ? { ...s, color: action.payload.color } : s
         ),
       };
+
+    case 'SET_VOICE_CONSTRAINT': {
+      const { streamId, hand, finger } = action.payload;
+      const current = state.voiceConstraints[streamId] ?? {};
+      const updated = { ...current };
+      if (hand === null) delete updated.hand;
+      else if (hand !== undefined) updated.hand = hand;
+      if (finger === null) delete updated.finger;
+      else if (finger !== undefined) updated.finger = finger;
+      const next = { ...state.voiceConstraints };
+      if (Object.keys(updated).length === 0) delete next[streamId];
+      else next[streamId] = updated;
+      return { ...state, updatedAt: new Date().toISOString(), voiceConstraints: next, analysisStale: true };
+    }
 
     // -- Layout editing --
 
@@ -432,6 +450,7 @@ export function createEmptyProjectState(): ProjectState {
         right: { centroid: { x: 5.5, y: 3.5 }, fingers: {} },
       },
     },
+    voiceConstraints: {},
     performanceLanes: [],
     laneGroups: [],
     sourceFiles: [],

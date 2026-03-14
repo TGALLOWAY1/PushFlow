@@ -192,6 +192,35 @@ export function ProjectLibraryPage() {
     });
   }, [pendingImport]);
 
+  // ---- New Blank Project ----
+
+  const handleNewProject = useCallback(() => {
+    const now = new Date().toISOString();
+    const id = generateId('proj');
+    const layoutId = generateId('layout');
+
+    const state: ProjectState = {
+      ...createEmptyProjectState(),
+      id,
+      name: 'Untitled Project',
+      createdAt: now,
+      updatedAt: now,
+      layouts: [{
+        id: layoutId,
+        name: 'Default',
+        padToVoice: {},
+        fingerConstraints: {},
+        scoreCache: null,
+        layoutMode: 'none',
+      }],
+      activeLayoutId: layoutId,
+    };
+
+    saveProject(state);
+    setSavedProjects(listProjects());
+    navigate(`/project/${id}`);
+  }, [navigate]);
+
   // ---- Project Actions ----
 
   const handleOpenDemo = useCallback((demo: ProjectState) => {
@@ -352,8 +381,14 @@ export function ProjectLibraryPage() {
         </div>
       </div>
 
-      {/* Import JSON */}
+      {/* Quick actions */}
       <div className="flex gap-2">
+        <button
+          className="px-3 py-1.5 bg-emerald-600 hover:bg-emerald-500 rounded text-sm font-medium text-white transition-colors"
+          onClick={handleNewProject}
+        >
+          + New Project
+        </button>
         <label className="px-3 py-1.5 bg-gray-800 hover:bg-gray-700 rounded text-sm text-gray-400 cursor-pointer border border-gray-700">
           Import Project JSON
           <input
