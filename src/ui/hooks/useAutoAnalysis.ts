@@ -253,5 +253,15 @@ export function useAutoAnalysis() {
     }
   }, [state, dispatch]);
 
-  return { generateFull, generationProgress };
+  // Precondition checks for Generate button
+  const activeStreams = getActiveStreams(state);
+  const currentLayout = getActiveLayout(state);
+  const canGenerate = activeStreams.length > 0 && currentLayout !== null;
+  const generateDisabledReason = !currentLayout
+    ? 'No layout available'
+    : activeStreams.length === 0
+      ? 'No sounds loaded — import MIDI or create patterns first'
+      : null;
+
+  return { generateFull, generationProgress, canGenerate, generateDisabledReason };
 }

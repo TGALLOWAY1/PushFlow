@@ -25,6 +25,8 @@ interface InteractiveGridProps {
   /** When provided, display this layout instead of the global active layout.
    *  Used when viewing a candidate solution whose layout differs from the user's. */
   layoutOverride?: import('../../types/layout').Layout;
+  /** Show onion skin overlay: previous/current/next event layers. */
+  onionSkin?: boolean;
 }
 
 /** Abbreviated finger names for display */
@@ -63,7 +65,10 @@ function safeColorAlpha(color: string | null | undefined, alpha: number, fallbac
   }
 }
 
-export function InteractiveGrid({ assignments, selectedEventIndex, onEventClick, layoutOverride }: InteractiveGridProps) {
+/** Physical reach threshold: pads farther apart than this are flagged as impossible. */
+const IMPOSSIBLE_REACH_THRESHOLD = 5;
+
+export function InteractiveGrid({ assignments, selectedEventIndex, onEventClick, layoutOverride, onionSkin = false }: InteractiveGridProps) {
   const { state, dispatch } = useProject();
   const layout = layoutOverride ?? getActiveLayout(state);
   const activeStreams = getActiveStreams(state);
@@ -128,7 +133,20 @@ export function InteractiveGrid({ assignments, selectedEventIndex, onEventClick,
   );
 
   const nextPadKeys = selectedTransition?.nextPadKeys ?? new Set<string>();
+  const previousPadKeys = selectedTransition?.previousPadKeys ?? new Set<string>();
   const sharedPadKeys = selectedTransition?.sharedPadKeys ?? new Set<string>();
+
+  // Check for impossible moves (distance > physical reach)
+  const impossibleMoveTargets = useMemo(() => {
+    const targets = new Set<string>();
+    if (!selectedTransition || !onionSkin) return targets;
+    for (const move of selectedTransition.fingerMoves) {
+      if (move.rawDistance !== undefined && move.rawDistance > IMPOSSIBLE_REACH_THRESHOLD) {
+        if (move.toPad) targets.add(move.toPad);
+      }
+    }
+    return targets;
+  }, [selectedTransition, onionSkin]);
 
   const transitionPaths = useMemo(() => {
     if (!selectedTransition) return [];
@@ -265,7 +283,9 @@ export function InteractiveGrid({ assignments, selectedEventIndex, onEventClick,
       const isSelected = selectedPadKeys.has(padKey);
       const isActivePlaying = activePadKeys.has(padKey);
       const isNext = nextPadKeys.has(padKey);
+      const isPrevious = onionSkin && previousPadKeys.has(padKey) && !isSelected;
       const isShared = sharedPadKeys.has(padKey);
+      const isImpossible = impossibleMoveTargets.has(padKey);
       const isDragOver = padKey === dragOverPad;
       const isDragSource = padKey === dragSourcePad;
       const constraint = layout?.fingerConstraints[padKey];
@@ -330,7 +350,9 @@ export function InteractiveGrid({ assignments, selectedEventIndex, onEventClick,
             ${isSelected ? 'z-10 scale-105 brightness-125 bg-[var(--bg-card)]' : ''}
             ${isActivePlaying && !isSelected ? 'z-10 scale-105 brightness-150 bg-[var(--bg-card)]' : ''}
             ${isNext && !isSelected ? 'border-dashed brightness-110' : ''}
+            ${isPrevious ? 'opacity-60' : ''}
             ${isShared ? 'ring-1 ring-emerald-400/50' : ''}
+            ${isImpossible ? 'ring-2 ring-red-500/80' : ''}
             ${isDragOver ? 'ring-2 ring-blue-400/60 scale-105 bg-[var(--bg-card)]' : ''}
             ${isDragSource ? 'opacity-30' : ''}
             ${isMuted ? 'opacity-30 pointer-events-none' : ''}
@@ -363,6 +385,13 @@ export function InteractiveGrid({ assignments, selectedEventIndex, onEventClick,
             ? `[${row},${col}] ${voice.name}${summary ? ` | ${summary.hitCount} hits` : ''}${constraint ? ` | Constraint: ${constraint}` : ''}`
             : `[${row},${col}] empty — drop a sound here`}
         >
+          {/* Previous event ghost (onion skin) */}
+          {isPrevious && !voice && (
+            <div
+              className="absolute inset-0 rounded-lg pointer-events-none"
+              style={{ backgroundColor: 'rgba(100, 130, 255, 0.08)', border: '1px dotted rgba(100, 130, 255, 0.2)' }}
+            />
+          )}
           {voice ? (
             <>
               {/* Voice name */}
@@ -375,7 +404,12 @@ export function InteractiveGrid({ assignments, selectedEventIndex, onEventClick,
                   {fingerList.join(' ')}
                 </span>
               )}
-              {/* Hit count and Constraint badges removed as per UX audit. They are now visible solely in the tooltip (title attribute). */}
+              {/* Hit count badge */}
+              {summary && summary.hitCount > 0 && (
+                <span className="absolute bottom-0.5 right-0.5 text-[7px] font-bold bg-black/40 rounded px-0.5 text-gray-400 pointer-events-none">
+                  {summary.hitCount}
+                </span>
+              )}
               
               {/* Remove button (visible on hover via parent group) */}
               <button

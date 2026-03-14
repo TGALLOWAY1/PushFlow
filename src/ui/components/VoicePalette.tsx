@@ -26,6 +26,49 @@ export function VoicePalette() {
     return map;
   }, [layout]);
 
+  // Build per-stream solver assignment summary from analysisResult
+  const solverSummary = useMemo(() => {
+    const map = new Map<string, { label: string; hand: string }>();
+    const fa = state.analysisResult?.executionPlan.fingerAssignments;
+    if (!fa || fa.length === 0) return map;
+
+    // Map noteNumber → stream id
+    const noteToStreamId = new Map<number, string>();
+    for (const s of state.soundStreams) {
+      noteToStreamId.set(s.originalMidiNote, s.id);
+    }
+
+    // Aggregate hand/finger counts per stream
+    const counts = new Map<string, Map<string, number>>();
+    for (const a of fa) {
+      const streamId = noteToStreamId.get(a.noteNumber);
+      if (!streamId || a.assignedHand === 'Unplayable') continue;
+      const handChar = a.assignedHand === 'left' ? 'L' : 'R';
+      const FINGER_SHORT: Record<string, string> = {
+        thumb: 'Th', index: 'Ix', middle: 'Md', ring: 'Rg', pinky: 'Pk',
+      };
+      const fingerStr = a.finger ? FINGER_SHORT[a.finger] ?? '' : '';
+      const key = fingerStr ? `${handChar}-${fingerStr}` : handChar;
+
+      const streamCounts = counts.get(streamId) ?? new Map<string, number>();
+      streamCounts.set(key, (streamCounts.get(key) ?? 0) + 1);
+      counts.set(streamId, streamCounts);
+    }
+
+    // Pick dominant assignment per stream
+    for (const [streamId, streamCounts] of counts) {
+      let best = '';
+      let bestCount = 0;
+      for (const [key, count] of streamCounts) {
+        if (count > bestCount) { best = key; bestCount = count; }
+      }
+      if (best) {
+        map.set(streamId, { label: best, hand: best.startsWith('L') ? 'left' : 'right' });
+      }
+    }
+    return map;
+  }, [state.analysisResult, state.soundStreams]);
+
   // Split into assigned vs unassigned
   const { assigned, unassigned } = useMemo(() => {
     const a: SoundStream[] = [];
@@ -57,6 +100,9 @@ export function VoicePalette() {
         Sounds
       </h3>
 
+      {/* Column headers for constraint dropdowns */}
+      <ConstraintColumnHeaders />
+
       {/* Unassigned streams */}
       {unassigned.length > 0 && (
         <div className="space-y-1">
@@ -69,6 +115,8 @@ export function VoicePalette() {
               stream={stream}
               padKeys={[]}
               voiceConstraint={state.voiceConstraints[stream.id]}
+              solverAssignment={solverSummary.get(stream.id)}
+              analysisStale={state.analysisStale}
               onToggleMute={() => dispatch({ type: 'TOGGLE_MUTE', payload: stream.id })}
               onDragStart={handleDragStart}
               onSetConstraint={(hand, finger) => dispatch({
@@ -92,6 +140,8 @@ export function VoicePalette() {
               stream={stream}
               padKeys={streamPadLocations.get(stream.id) ?? []}
               voiceConstraint={state.voiceConstraints[stream.id]}
+              solverAssignment={solverSummary.get(stream.id)}
+              analysisStale={state.analysisStale}
               onToggleMute={() => dispatch({ type: 'TOGGLE_MUTE', payload: stream.id })}
               onDragStart={handleDragStart}
               onSetConstraint={(hand, finger) => dispatch({
@@ -114,6 +164,8 @@ function StreamRow({
   stream,
   padKeys,
   voiceConstraint,
+  solverAssignment,
+  analysisStale,
   onToggleMute,
   onDragStart,
   onSetConstraint,
@@ -121,6 +173,8 @@ function StreamRow({
   stream: SoundStream;
   padKeys: string[];
   voiceConstraint?: { hand?: 'left' | 'right'; finger?: string };
+  solverAssignment?: { label: string; hand: string };
+  analysisStale: boolean;
   onToggleMute: () => void;
   onDragStart: (e: React.DragEvent, stream: SoundStream) => void;
   onSetConstraint: (hand?: 'left' | 'right' | null, finger?: string | null) => void;
@@ -157,6 +211,18 @@ function StreamRow({
         <span className="text-[10px] text-gray-500 font-mono flex-shrink-0">
           [{padKeys[0]}]
           {padKeys.length > 1 && `+${padKeys.length - 1}`}
+        </span>
+      )}
+
+      {/* Solver assignment pill */}
+      {solverAssignment && (
+        <span
+          className={`text-[9px] font-mono px-1 py-0.5 rounded flex-shrink-0 ${
+            analysisStale ? 'text-gray-600 bg-gray-800/30' : 'text-sky-300/70 bg-sky-500/10'
+          }`}
+          title={`Solver: ${solverAssignment.label}${analysisStale ? ' (stale)' : ''}`}
+        >
+          {solverAssignment.label}
         </span>
       )}
 
@@ -214,6 +280,27 @@ function StreamRow({
       >
         {stream.muted ? 'M' : 'S'}
       </button>
+    </div>
+  );
+}
+
+function ConstraintColumnHeaders() {
+  return (
+    <div className="flex items-center gap-1.5 px-2 py-0.5">
+      {/* Spacer for color swatch */}
+      <span className="w-2.5 flex-shrink-0" />
+      {/* Spacer for name */}
+      <span className="flex-1" />
+      {/* Spacer for event count */}
+      <span className="text-[10px] flex-shrink-0" />
+      {/* Spacer for pad location */}
+      <span className="flex-shrink-0" />
+      {/* Hand label */}
+      <span className="text-[8px] text-gray-600 w-7 text-center flex-shrink-0">Hand</span>
+      {/* Finger label */}
+      <span className="text-[8px] text-gray-600 w-9 text-center flex-shrink-0">Finger</span>
+      {/* Mute label */}
+      <span className="text-[8px] text-gray-600 w-5 text-center flex-shrink-0" />
     </div>
   );
 }

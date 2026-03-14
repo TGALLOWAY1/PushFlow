@@ -16,6 +16,8 @@ import { type GenerationMode } from '../hooks/useAutoAnalysis';
 interface EditorToolbarProps {
   generateFull?: (mode?: GenerationMode) => Promise<void>;
   generationProgress?: string | null;
+  canGenerate?: boolean;
+  generateDisabledReason?: string | null;
   showAnalysis?: boolean;
   setShowAnalysis?: (show: boolean) => void;
   showDiagnostics?: boolean;
@@ -25,6 +27,8 @@ interface EditorToolbarProps {
 export function EditorToolbar({
   generateFull,
   generationProgress,
+  canGenerate = true,
+  generateDisabledReason,
   showAnalysis,
   setShowAnalysis,
   showDiagnostics,
@@ -185,9 +189,14 @@ export function EditorToolbar({
                 <option value="auto">Auto</option>
               </select>
               <button
-                className="px-2 py-1 rounded text-[11px] transition-colors bg-blue-600 hover:bg-blue-500 text-white"
-                onClick={() => generateFull(generationMode)}
-                title="Generate 3 layout candidates (auto-assigns pads if none are set)"
+                className={`px-2 py-1 rounded text-[11px] transition-colors ${
+                  canGenerate
+                    ? 'bg-blue-600 hover:bg-blue-500 text-white'
+                    : 'bg-gray-700 text-gray-500 cursor-not-allowed'
+                }`}
+                onClick={() => canGenerate && generateFull(generationMode)}
+                disabled={!canGenerate}
+                title={generateDisabledReason ?? 'Generate 3 layout candidates (auto-assigns pads if none are set)'}
               >
                 Generate
               </button>

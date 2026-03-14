@@ -17,8 +17,10 @@ export interface TransitionFingerMove {
 export interface SelectedTransitionModel {
   current: EventMoment;
   next: EventMoment | null;
+  previous: EventMoment | null;
   currentPadKeys: Set<string>;
   nextPadKeys: Set<string>;
+  previousPadKeys: Set<string>;
   sharedPadKeys: Set<string>;
   fingerMoves: TransitionFingerMove[];
   currentOnlyAssignments: FingerAssignment[];
@@ -80,8 +82,10 @@ export function buildSelectedTransitionModel(
 
   const current = moments[momentIndex];
   const next = moments[momentIndex + 1] ?? null;
+  const previous = momentIndex > 0 ? moments[momentIndex - 1] : null;
   const currentPadKeys = new Set(current.assignments.map(assignmentPadKey).filter((key): key is string => key !== null));
   const nextPadKeys = new Set((next?.assignments ?? []).map(assignmentPadKey).filter((key): key is string => key !== null));
+  const previousPadKeys = new Set((previous?.assignments ?? []).map(assignmentPadKey).filter((key): key is string => key !== null));
   const sharedPadKeys = new Set([...currentPadKeys].filter(key => nextPadKeys.has(key)));
 
   const nextFingerAssignments = (next?.assignments ?? []).filter(
@@ -122,8 +126,10 @@ export function buildSelectedTransitionModel(
   return {
     current,
     next,
+    previous,
     currentPadKeys,
     nextPadKeys,
+    previousPadKeys,
     sharedPadKeys,
     fingerMoves,
     currentOnlyAssignments,

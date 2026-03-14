@@ -9,6 +9,7 @@
 import { useState, useRef, useEffect, useCallback } from 'react';
 import { type PatternRecipe } from '../../../types/patternRecipe';
 import { PATTERN_PRESETS } from '../../../engine/pattern/presets';
+import { loadPresets, type PerformancePreset } from '../../persistence/presetStorage';
 
 // ============================================================================
 // Props
@@ -19,6 +20,8 @@ interface PatternSelectorProps {
   onRandomize: (seed: number) => void;
   onCustomize: (recipe?: PatternRecipe) => void;
   hasPatternResult: boolean;
+  onLoadPreset?: (preset: PerformancePreset) => void;
+  onDeletePreset?: (presetId: string) => void;
 }
 
 // ============================================================================
@@ -55,9 +58,17 @@ export function PatternSelector({
   onRandomize,
   onCustomize,
   hasPatternResult,
+  onLoadPreset,
+  onDeletePreset,
 }: PatternSelectorProps) {
   const [isOpen, setIsOpen] = useState(false);
+  const [userPresets, setUserPresets] = useState<PerformancePreset[]>([]);
   const panelRef = useRef<HTMLDivElement>(null);
+
+  // Refresh user presets when dropdown opens
+  useEffect(() => {
+    if (isOpen) setUserPresets(loadPresets());
+  }, [isOpen]);
 
   // Close on outside click
   useEffect(() => {
@@ -122,6 +133,40 @@ export function PatternSelector({
               Customize...
             </button>
           </div>
+
+          {/* User saved presets */}
+          {onLoadPreset && userPresets.length > 0 && (
+            <>
+              <div className="px-3 pt-2 pb-1">
+                <h4 className="text-[10px] font-semibold text-gray-500 uppercase tracking-wider">My Performances</h4>
+              </div>
+              <div className="px-2 pb-2 space-y-0.5">
+                {userPresets.map(preset => (
+                  <div key={preset.id} className="flex items-center gap-1 group">
+                    <button
+                      className="flex-1 text-left px-2 py-1.5 rounded hover:bg-gray-700/60 transition-colors text-xs text-gray-200"
+                      onClick={() => { onLoadPreset(preset); setIsOpen(false); }}
+                    >
+                      <span className="font-medium">{preset.name}</span>
+                      <span className="text-[10px] text-gray-500 ml-2">
+                        {preset.lanes.length}L · {preset.events.length}ev
+                      </span>
+                    </button>
+                    {onDeletePreset && (
+                      <button
+                        className="w-5 h-5 flex items-center justify-center text-[10px] text-red-400/50 hover:text-red-400 opacity-0 group-hover:opacity-100 transition-opacity rounded hover:bg-red-500/10"
+                        onClick={() => { onDeletePreset(preset.id); setUserPresets(prev => prev.filter(p => p.id !== preset.id)); }}
+                        title="Delete preset"
+                      >
+                        ×
+                      </button>
+                    )}
+                  </div>
+                ))}
+              </div>
+              <div className="border-t border-gray-700" />
+            </>
+          )}
 
           {/* Rudiment presets */}
           <div className="px-3 pt-2 pb-1">
