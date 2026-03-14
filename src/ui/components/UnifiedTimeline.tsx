@@ -435,7 +435,7 @@ export function UnifiedTimeline() {
                         className={`absolute flex items-center justify-center rounded-sm transition-all cursor-pointer
                           ${isSelected ? 'z-20 ring-2 ring-yellow-400 scale-110' : 'z-10 hover:z-20 hover:scale-105'}`}
                         style={{
-                          left: x - 9,
+                          left: x,
                           top: trackY + 5,
                           width: 18,
                           height: TRACK_HEIGHT - 10,

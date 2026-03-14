@@ -13,9 +13,11 @@ import { generateId } from '../../../utils/idGenerator';
 import { LoopLaneSidebar } from '../loop-editor/LoopLaneSidebar';
 import { LoopGridCanvas } from '../loop-editor/LoopGridCanvas';
 import { RudimentEventStepper } from '../loop-editor/RudimentEventStepper';
-import { RudimentPadGrid } from '../loop-editor/RudimentPadGrid';
+// RudimentPadGrid removed — pad assignments now sync to main InteractiveGrid
+import { type Layout } from '../../../types/layout';
 import { RecipeEditorModal } from '../loop-editor/RecipeEditorModal';
 import { PatternSelector } from '../loop-editor/PatternSelector';
+import { savePreset, deletePreset, presetToLoopState, type PerformancePreset } from '../../persistence/presetStorage';
 
 const LANE_COLORS = ['#ef4444', '#f97316', '#22c55e', '#eab308', '#3b82f6', '#a855f7', '#ec4899', '#14b8a6'];
 const DEFAULT_MIDI_NOTES = [36, 38, 42, 46, 48, 60, 62, 64];
@@ -187,6 +189,32 @@ export function WorkspacePatternStudio() {
     setShowRecipeEditor(false);
   }, [dispatchComposer]);
 
+  const handleSubdivisionChange = useCallback((subdivision: '1/8' | '1/4' | '1/2' | '1/1') => {
+    if (subdivision === loopState.config.subdivision) return;
+    if (loopState.events.size > 0) {
+      const ok = window.confirm(`Changing grid subdivision will clear ${loopState.events.size} events. Continue?`);
+      if (!ok) return;
+    }
+    dispatchComposer({ type: 'SET_SUBDIVISION', payload: subdivision });
+  }, [dispatchComposer, loopState.config.subdivision, loopState.events.size]);
+
+  const handleSavePreset = useCallback(() => {
+    if (loopState.events.size === 0) return;
+    const name = window.prompt('Preset name:', `Pattern ${new Date().toLocaleDateString()}`);
+    if (!name) return;
+    savePreset(name, loopState);
+  }, [loopState]);
+
+  const handleLoadPreset = useCallback((preset: PerformancePreset) => {
+    setHasTouchedComposer(true);
+    dispatch({ type: 'LOAD_LOOP_STATE', payload: presetToLoopState(preset) });
+    setActiveEventIndex(null);
+  }, []);
+
+  const handleDeletePreset = useCallback((presetId: string) => {
+    deletePreset(presetId);
+  }, []);
+
   const handleResetComposer = useCallback(() => {
     setHasTouchedComposer(true);
     dispatch({ type: 'LOAD_LOOP_STATE', payload: createInitialLoopState() });
@@ -196,6 +224,24 @@ export function WorkspacePatternStudio() {
       payload: { sourceFileId: WORKSPACE_PATTERN_SOURCE_ID, groupId: WORKSPACE_PATTERN_GROUP_ID },
     });
   }, [projectDispatch]);
+
+  // Sync pattern pad assignments to main grid layout
+  useEffect(() => {
+    if (!activeResult || activeResult.padAssignments.length === 0) return;
+    const padToVoice: Layout['padToVoice'] = {};
+    for (const pa of activeResult.padAssignments) {
+      const lane = loopState.lanes.find(l => l.id === pa.laneId);
+      padToVoice[`${pa.pad.row},${pa.pad.col}`] = {
+        id: pa.laneId,
+        name: pa.laneName,
+        sourceType: 'midi_track',
+        sourceFile: WORKSPACE_PATTERN_NAME,
+        originalMidiNote: lane?.midiNote ?? 0,
+        color: lane?.color ?? '#888',
+      };
+    }
+    projectDispatch({ type: 'BULK_ASSIGN_PADS', payload: padToVoice });
+  }, [activeResult, loopState.lanes, projectDispatch]);
 
   const activeStepIndex = useMemo(() => {
     if (activeEventIndex === null || !activeResult) return null;
@@ -240,7 +286,7 @@ export function WorkspacePatternStudio() {
                   ? 'bg-gray-700 text-gray-200'
                   : 'bg-gray-800 text-gray-500 hover:text-gray-300'
               }`}
-              onClick={() => dispatchComposer({ type: 'SET_SUBDIVISION', payload: subdivision })}
+              onClick={() => handleSubdivisionChange(subdivision)}
             >
               {subdivision}
             </button>
@@ -293,7 +339,22 @@ export function WorkspacePatternStudio() {
           onRandomize={handleRandomizePattern}
           onCustomize={handleOpenRecipeEditor}
           hasPatternResult={!!activeResult}
+          onLoadPreset={handleLoadPreset}
+          onDeletePreset={handleDeletePreset}
         />
+
+        <button
+          className={`px-2 py-1 text-xs rounded transition-colors ${
+            loopState.events.size > 0
+              ? 'bg-sky-600/20 text-sky-300 border border-sky-500/30 hover:bg-sky-600/30'
+              : 'bg-gray-800 text-gray-600 cursor-not-allowed'
+          }`}
+          onClick={handleSavePreset}
+          disabled={loopState.events.size === 0}
+          title={loopState.events.size > 0 ? 'Save current pattern as preset' : 'Add events first'}
+        >
+          Save
+        </button>
 
         <button
           className="px-2 py-1 text-xs rounded bg-gray-800 text-gray-400 hover:text-gray-200 hover:bg-gray-700"
@@ -303,7 +364,7 @@ export function WorkspacePatternStudio() {
         </button>
       </div>
 
-      {activeResult && (
+      {activeResult ? (
         <RudimentEventStepper
           fingerAssignments={activeResult.fingerAssignments}
           complexity={activeResult.complexity}
@@ -311,7 +372,11 @@ export function WorkspacePatternStudio() {
           onSetActiveEvent={setActiveEventIndex}
           lanes={loopState.lanes}
         />
-      )}
+      ) : loopState.events.size > 0 && hasTouchedComposer ? (
+        <div className="px-3 py-1.5 rounded bg-gray-800/30 border border-gray-700/50 text-[10px] text-gray-500">
+          Pattern edited — use Pattern Selector to re-generate analysis
+        </div>
+      ) : null}
 
       <div className="flex gap-3 items-start">
         <div className="flex-1 min-w-0 flex rounded-lg bg-gray-800/20 border border-gray-700 overflow-hidden" style={{ minHeight: 260 }}>
@@ -327,16 +392,7 @@ export function WorkspacePatternStudio() {
           />
         </div>
 
-        {activeResult && (
-          <div className="flex-shrink-0">
-            <RudimentPadGrid
-              padAssignments={activeResult.padAssignments}
-              fingerAssignments={activeResult.fingerAssignments}
-              activeEventIndex={activeEventIndex}
-              lanes={loopState.lanes}
-            />
-          </div>
-        )}
+        {/* Pad assignments now sync to main InteractiveGrid via BULK_ASSIGN_PADS */}
       </div>
 
       {showRecipeEditor && (
