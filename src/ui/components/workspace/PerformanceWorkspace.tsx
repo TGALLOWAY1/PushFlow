@@ -1,4 +1,4 @@
-import { useState, useCallback, useRef, useMemo, useEffect, type ReactNode } from 'react';
+import { useState, type ReactNode } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useProject } from '../../state/ProjectContext';
 import { saveProject } from '../../persistence/projectStorage';
@@ -9,22 +9,14 @@ import { CompareGridView } from '../CompareGridView';
 import { AnalysisSidePanel } from '../AnalysisSidePanel';
 import { DiagnosticsPanel } from '../DiagnosticsPanel';
 import { EventDetailPanel } from '../EventDetailPanel';
-import { TimelinePanel } from '../TimelinePanel';
 import { TransitionDetailPanel } from './TransitionDetailPanel';
-import { LaneToolbar } from '../lanes/LaneToolbar';
-import { LaneSidebar } from '../lanes/LaneSidebar';
-import { LaneTimeline } from '../lanes/LaneTimeline';
-import { LaneInspector } from '../lanes/LaneInspector';
+import { UnifiedTimeline } from '../UnifiedTimeline';
 import { WorkspacePatternStudio } from './WorkspacePatternStudio';
 import { useAutoAnalysis } from '../../hooks/useAutoAnalysis';
 import { useKeyboardShortcuts } from '../../hooks/useKeyboardShortcuts';
 
 type FocusMode = 'balanced' | 'timeline' | 'layout';
 type DrawerTab = 'execution' | 'composer';
-
-const SIDEBAR_WIDTH = 256;
-const INSPECTOR_WIDTH = 288;
-const TIMELINE_PADDING = 100;
 
 export function PerformanceWorkspace() {
   const { state, dispatch } = useProject();
@@ -34,85 +26,18 @@ export function PerformanceWorkspace() {
 
   const [focusMode, setFocusMode] = useState<FocusMode>('balanced');
   const [drawerTab, setDrawerTab] = useState<DrawerTab>('execution');
-  const [showAnalysis, setShowAnalysis] = useState(true);
-  const [showDiagnostics, setShowDiagnostics] = useState(true);
-
-  const [selectedLaneIds, setSelectedLaneIds] = useState<Set<string>>(new Set());
-  const [currentZoom, setCurrentZoom] = useState(70);
-  const [scrollLeft, setScrollLeft] = useState(0);
-  const [showInactive, setShowInactive] = useState(false);
-  const [searchQuery, setSearchQuery] = useState('');
-  const [selectedEventTime, setSelectedEventTime] = useState<number | null>(null);
-  const sidebarScrollRef = useRef<HTMLDivElement>(null);
-
-  useEffect(() => {
-    if (state.performanceLanes.length === 0 && state.soundStreams.length > 0) {
-      dispatch({ type: 'POPULATE_LANES_FROM_STREAMS' });
-    }
-  }, [state.performanceLanes.length, state.soundStreams.length, dispatch]);
-
-  useEffect(() => {
-    if (state.performanceLanes.length > 0) {
-      dispatch({ type: 'SYNC_STREAMS_FROM_LANES' });
-    }
-  }, [state.performanceLanes, dispatch]);
-
-  const minZoom = useMemo(() => {
-    const secondsPerBeat = 60 / state.tempo;
-    const totalDuration = secondsPerBeat * 16;
-    const availableWidth = Math.max(window.innerWidth - SIDEBAR_WIDTH - INSPECTOR_WIDTH - TIMELINE_PADDING, 400);
-    return Math.max(20, Math.round(availableWidth / totalDuration));
-  }, [state.tempo]);
-
-  const zoom = Math.max(currentZoom, minZoom);
-  const setZoom = useCallback((nextZoom: number) => {
-    setCurrentZoom(Math.max(nextZoom, minZoom));
-  }, [minZoom]);
+  const [showAnalysis, setShowAnalysis] = useState(false);
+  const [showDiagnostics, setShowDiagnostics] = useState(false);
+  const [leftCollapsed, setLeftCollapsed] = useState(false);
 
   const assignments = state.analysisResult?.executionPlan.fingerAssignments;
-
-  useEffect(() => {
-    if (!assignments || state.selectedEventIndex === null) return;
-    const selectedAssignment = assignments.find(assignment => assignment.eventIndex === state.selectedEventIndex);
-    if (selectedAssignment && selectedAssignment.startTime !== selectedEventTime) {
-      setSelectedEventTime(selectedAssignment.startTime);
-    }
-  }, [assignments, state.selectedEventIndex, selectedEventTime]);
-
-  const handleSelectEventTime = useCallback((time: number) => {
-    setSelectedEventTime(time);
-    if (!assignments) {
-      dispatch({ type: 'SELECT_EVENT', payload: null });
-      return;
-    }
-    const selectedAssignment = assignments.find(assignment => assignment.startTime === time);
-    dispatch({ type: 'SELECT_EVENT', payload: selectedAssignment?.eventIndex ?? null });
-  }, [assignments, dispatch]);
-
-  const handleSelectLane = useCallback((id: string | null, multiSelect?: boolean) => {
-    if (!id) {
-      setSelectedLaneIds(new Set());
-      return;
-    }
-    setSelectedLaneIds(prev => {
-      if (multiSelect) {
-        const next = new Set(prev);
-        if (next.has(id)) next.delete(id);
-        else next.add(id);
-        return next;
-      }
-      if (prev.size === 1 && prev.has(id)) return new Set();
-      return new Set([id]);
-    });
-  }, []);
-
-  const selectedLanes = state.performanceLanes.filter(lane => selectedLaneIds.has(lane.id));
   const selectedCandidate = state.candidates.find(candidate => candidate.id === state.selectedCandidateId) ?? null;
   const compareCandidate = state.candidates.find(candidate => candidate.id === state.compareCandidateId) ?? null;
   const isCompareMode = !!selectedCandidate && !!compareCandidate;
 
   return (
     <div className="max-w-[1600px] mx-auto space-y-3">
+      {/* ─── Header ─────────────────────────────────────────────────────── */}
       <div className="flex items-center gap-3">
         <button
           className="px-2 py-1 text-xs rounded bg-gray-800 hover:bg-gray-700 text-gray-400"
@@ -149,6 +74,7 @@ export function PerformanceWorkspace() {
         </div>
       </div>
 
+      {/* ─── Error Banner ───────────────────────────────────────────────── */}
       {state.error && (
         <div className="p-3 rounded-lg bg-red-500/10 border border-red-500/30 text-red-400 text-sm">
           {state.error}
@@ -161,6 +87,7 @@ export function PerformanceWorkspace() {
         </div>
       )}
 
+      {/* ─── Editor Toolbar ─────────────────────────────────────────────── */}
       <EditorToolbar
         generateFull={generateFull}
         generationProgress={generationProgress}
@@ -170,92 +97,58 @@ export function PerformanceWorkspace() {
         setShowDiagnostics={setShowDiagnostics}
       />
 
+      {/* ─── Main Grid: Left Sidebar + Center Content ───────────────────── */}
       <div
         className="grid gap-4 items-start"
-        style={{ gridTemplateColumns: getWorkspaceColumns(focusMode) }}
+        style={{ gridTemplateColumns: getWorkspaceColumns(focusMode, leftCollapsed) }}
       >
+        {/* Left Column: Collapsible Sidebar */}
         <div className="space-y-3 min-w-0">
-          <div className="p-3 rounded-lg glass-panel space-y-2">
-            <div className="text-xs font-medium text-gray-400 uppercase tracking-wide">Workspace Flow</div>
-            <div className="text-sm text-gray-200">Edit the performance timeline in the center, watch the Push grid update on the right, and open the composer below to generate or sketch new material directly into the same project.</div>
-            <div className="flex gap-2 pt-1">
-              <button
-                className={`px-2 py-1 text-xs rounded transition-colors ${
-                  drawerTab === 'composer' ? 'bg-emerald-600/20 text-emerald-300 border border-emerald-500/30' : 'bg-gray-800 text-gray-400 hover:text-gray-200'
-                }`}
-                onClick={() => setDrawerTab('composer')}
-              >
-                Open Composer
-              </button>
-              <button
-                className={`px-2 py-1 text-xs rounded transition-colors ${
-                  drawerTab === 'execution' ? 'bg-sky-600/20 text-sky-300 border border-sky-500/30' : 'bg-gray-800 text-gray-400 hover:text-gray-200'
-                }`}
-                onClick={() => setDrawerTab('execution')}
-              >
-                Execution View
-              </button>
-            </div>
-          </div>
+          <button
+            className="w-full flex items-center justify-center py-1.5 rounded glass-panel text-gray-500 hover:text-gray-300 text-xs transition-colors"
+            onClick={() => setLeftCollapsed(!leftCollapsed)}
+            title={leftCollapsed ? 'Expand sidebar' : 'Collapse sidebar'}
+          >
+            {leftCollapsed ? '▸' : '◂'}
+          </button>
 
-          <div className="p-3 rounded-lg glass-panel">
-            <VoicePalette />
-          </div>
-        </div>
-
-        <div className="min-w-0 rounded-lg glass-panel overflow-hidden">
-          <LaneToolbar
-            zoom={zoom}
-            minZoom={minZoom}
-            onZoomChange={setZoom}
-            showInactive={showInactive}
-            onToggleShowInactive={() => setShowInactive(!showInactive)}
-            searchQuery={searchQuery}
-            onSearchChange={setSearchQuery}
-          />
-
-          {state.performanceLanes.length === 0 ? (
-            <div className="px-6 py-20 text-center text-gray-500">
-              Import MIDI files or open the composer below to generate timeline material inside this project.
+          {leftCollapsed ? (
+            <div className="flex flex-col items-center gap-3 py-2">
+              <span className="text-[10px] text-gray-500" style={{ writingMode: 'vertical-lr' }}>Sounds</span>
             </div>
           ) : (
-            <div className="flex min-h-[460px]">
-              <LaneSidebar
-                selectedLaneIds={selectedLaneIds}
-                onSelectLane={handleSelectLane}
-                searchQuery={searchQuery}
-                showInactive={showInactive}
-                scrollRef={sidebarScrollRef}
-              />
+            <>
+              <div className="p-3 rounded-lg glass-panel space-y-2">
+                <div className="text-xs font-medium text-gray-400 uppercase tracking-wide">Workspace Flow</div>
+                <div className="text-sm text-gray-200">Edit the performance timeline below, watch the Push grid update on the right, and open the composer to generate or sketch new material.</div>
+                <div className="flex gap-2 pt-1">
+                  <button
+                    className={`px-2 py-1 text-xs rounded transition-colors ${
+                      drawerTab === 'composer' ? 'bg-emerald-600/20 text-emerald-300 border border-emerald-500/30' : 'bg-gray-800 text-gray-400 hover:text-gray-200'
+                    }`}
+                    onClick={() => setDrawerTab('composer')}
+                  >
+                    Open Composer
+                  </button>
+                  <button
+                    className={`px-2 py-1 text-xs rounded transition-colors ${
+                      drawerTab === 'execution' ? 'bg-sky-600/20 text-sky-300 border border-sky-500/30' : 'bg-gray-800 text-gray-400 hover:text-gray-200'
+                    }`}
+                    onClick={() => setDrawerTab('execution')}
+                  >
+                    Timeline View
+                  </button>
+                </div>
+              </div>
 
-              <LaneTimeline
-                zoom={zoom}
-                scrollLeft={scrollLeft}
-                onScrollLeft={setScrollLeft}
-                selectedLaneIds={selectedLaneIds}
-                onSelectLane={handleSelectLane}
-                searchQuery={searchQuery}
-                showInactive={showInactive}
-                selectedEventTime={selectedEventTime}
-                onSelectEventTime={handleSelectEventTime}
-                onVerticalScroll={scrollTop => {
-                  if (sidebarScrollRef.current) {
-                    sidebarScrollRef.current.scrollTop = scrollTop;
-                  }
-                }}
-              />
-
-              {selectedLanes.length > 0 && (
-                <LaneInspector
-                  lane={selectedLanes[0]}
-                  lanes={selectedLanes}
-                  onClose={() => setSelectedLaneIds(new Set())}
-                />
-              )}
-            </div>
+              <div className="p-3 rounded-lg glass-panel">
+                <VoicePalette />
+              </div>
+            </>
           )}
         </div>
 
+        {/* Center Column: Push Grid + Event Detail + Transition Detail */}
         <div className="space-y-3 min-w-0">
           <div className="p-3 rounded-lg glass-panel">
             <div className="flex items-center justify-between mb-2">
@@ -284,25 +177,14 @@ export function PerformanceWorkspace() {
 
           <EventDetailPanel />
           <TransitionDetailPanel />
-
-          {showAnalysis && (
-            <div className="p-3 rounded-lg glass-panel">
-              <AnalysisSidePanel />
-            </div>
-          )}
-
-          {showDiagnostics && state.analysisResult && (
-            <div className="p-3 rounded-lg glass-panel">
-              <DiagnosticsPanel />
-            </div>
-          )}
         </div>
       </div>
 
+      {/* ─── Bottom Drawer: Unified Timeline / Pattern Composer ─────────── */}
       <div className="rounded-lg glass-panel overflow-hidden">
         <div className="flex items-center gap-1 px-3 py-2 border-b border-gray-800 bg-gray-900/40">
           <DrawerButton active={drawerTab === 'execution'} onClick={() => setDrawerTab('execution')}>
-            Execution
+            Timeline
           </DrawerButton>
           <DrawerButton active={drawerTab === 'composer'} onClick={() => setDrawerTab('composer')}>
             Pattern Composer
@@ -310,18 +192,45 @@ export function PerformanceWorkspace() {
           <div className="flex-1" />
           <span className="text-[10px] text-gray-600">
             {drawerTab === 'execution'
-              ? 'Inspect event-level execution and playback'
+              ? 'Performance timeline with execution analysis'
               : 'Generate or sketch new material into the same timeline'}
           </span>
         </div>
 
-        <div className="p-3">
-          {drawerTab === 'execution' ? <TimelinePanel /> : <WorkspacePatternStudio />}
+        <div className={drawerTab === 'execution' ? '' : 'p-3'}>
+          {drawerTab === 'execution' ? <UnifiedTimeline /> : <WorkspacePatternStudio />}
         </div>
       </div>
+
+      {/* ─── Analysis & Diagnostics Slide-out Panel ─────────────────────── */}
+      {(showAnalysis || showDiagnostics) && (
+        <>
+          <div
+            className="fixed inset-0 z-40 bg-black/20"
+            onClick={() => { setShowAnalysis(false); setShowDiagnostics(false); }}
+          />
+          <div className="fixed top-0 right-0 h-full w-[380px] z-50 glass-panel-strong border-l border-gray-700 shadow-2xl overflow-y-auto">
+            <div className="p-4 space-y-4">
+              <div className="flex items-center justify-between">
+                <h3 className="text-sm font-medium text-gray-300">Analysis & Diagnostics</h3>
+                <button
+                  className="text-gray-500 hover:text-gray-300 transition-colors text-sm"
+                  onClick={() => { setShowAnalysis(false); setShowDiagnostics(false); }}
+                >
+                  ×
+                </button>
+              </div>
+              {showAnalysis && <AnalysisSidePanel />}
+              {showDiagnostics && state.analysisResult && <DiagnosticsPanel />}
+            </div>
+          </div>
+        </>
+      )}
     </div>
   );
 }
+
+// ─── Helper Components ──────────────────────────────────────────────────────
 
 function FocusButton({
   active,
@@ -365,13 +274,19 @@ function DrawerButton({
   );
 }
 
-function getWorkspaceColumns(focusMode: FocusMode): string {
+function getWorkspaceColumns(focusMode: FocusMode, leftCollapsed: boolean): string {
+  const leftWidth = leftCollapsed ? '48px' : '260px';
+  // 2-column layout: left sidebar + center content
+  // Focus modes adjust proportion of the center content
   switch (focusMode) {
     case 'timeline':
-      return '260px minmax(0, 1.55fr) minmax(360px, 0.95fr)';
+      // Timeline focus: center gets more space (grid is compact)
+      return `${leftWidth} minmax(0, 1fr)`;
     case 'layout':
-      return '240px minmax(0, 1fr) minmax(460px, 1.15fr)';
+      // Layout focus: same 2 columns but grid panel is wider
+      return `${leftWidth} minmax(0, 1fr)`;
     default:
-      return '260px minmax(0, 1.35fr) minmax(420px, 1fr)';
+      // Balanced
+      return `${leftWidth} minmax(0, 1fr)`;
   }
 }

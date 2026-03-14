@@ -68,8 +68,13 @@ export function VoicePalette() {
               key={stream.id}
               stream={stream}
               padKeys={[]}
+              voiceConstraint={state.voiceConstraints[stream.id]}
               onToggleMute={() => dispatch({ type: 'TOGGLE_MUTE', payload: stream.id })}
               onDragStart={handleDragStart}
+              onSetConstraint={(hand, finger) => dispatch({
+                type: 'SET_VOICE_CONSTRAINT',
+                payload: { streamId: stream.id, hand, finger },
+              })}
             />
           ))}
         </div>
@@ -86,8 +91,13 @@ export function VoicePalette() {
               key={stream.id}
               stream={stream}
               padKeys={streamPadLocations.get(stream.id) ?? []}
+              voiceConstraint={state.voiceConstraints[stream.id]}
               onToggleMute={() => dispatch({ type: 'TOGGLE_MUTE', payload: stream.id })}
               onDragStart={handleDragStart}
+              onSetConstraint={(hand, finger) => dispatch({
+                type: 'SET_VOICE_CONSTRAINT',
+                payload: { streamId: stream.id, hand, finger },
+              })}
             />
           ))}
         </div>
@@ -103,13 +113,17 @@ export function VoicePalette() {
 function StreamRow({
   stream,
   padKeys,
+  voiceConstraint,
   onToggleMute,
   onDragStart,
+  onSetConstraint,
 }: {
   stream: SoundStream;
   padKeys: string[];
+  voiceConstraint?: { hand?: 'left' | 'right'; finger?: string };
   onToggleMute: () => void;
   onDragStart: (e: React.DragEvent, stream: SoundStream) => void;
+  onSetConstraint: (hand?: 'left' | 'right' | null, finger?: string | null) => void;
 }) {
   return (
     <div
@@ -145,6 +159,43 @@ function StreamRow({
           {padKeys.length > 1 && `+${padKeys.length - 1}`}
         </span>
       )}
+
+      {/* Hand constraint */}
+      <select
+        className="bg-gray-800 border border-gray-700 text-[10px] text-gray-400 rounded px-0.5 py-0.5 w-7 flex-shrink-0"
+        value={voiceConstraint?.hand ?? ''}
+        onChange={e => onSetConstraint(
+          e.target.value === '' ? null : e.target.value as 'left' | 'right',
+          undefined
+        )}
+        onClick={e => e.stopPropagation()}
+        onMouseDown={e => e.stopPropagation()}
+        title="Hand constraint"
+      >
+        <option value="">-</option>
+        <option value="left">L</option>
+        <option value="right">R</option>
+      </select>
+
+      {/* Finger constraint */}
+      <select
+        className="bg-gray-800 border border-gray-700 text-[10px] text-gray-400 rounded px-0.5 py-0.5 w-9 flex-shrink-0"
+        value={voiceConstraint?.finger ?? ''}
+        onChange={e => onSetConstraint(
+          undefined,
+          e.target.value === '' ? null : e.target.value
+        )}
+        onClick={e => e.stopPropagation()}
+        onMouseDown={e => e.stopPropagation()}
+        title="Finger constraint"
+      >
+        <option value="">-</option>
+        <option value="thumb">Th</option>
+        <option value="index">Ix</option>
+        <option value="middle">Md</option>
+        <option value="ring">Rg</option>
+        <option value="pinky">Pk</option>
+      </select>
 
       {/* Mute toggle */}
       <button
