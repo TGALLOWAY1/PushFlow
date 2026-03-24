@@ -13,6 +13,7 @@ import { TransitionDetailPanel } from './TransitionDetailPanel';
 import { UnifiedTimeline } from '../UnifiedTimeline';
 import { WorkspacePatternStudio } from './WorkspacePatternStudio';
 import { useAutoAnalysis } from '../../hooks/useAutoAnalysis';
+import { useAutoSave } from '../../hooks/useAutoSave';
 import { useKeyboardShortcuts } from '../../hooks/useKeyboardShortcuts';
 
 type DrawerTab = 'execution' | 'composer';
@@ -21,6 +22,7 @@ export function PerformanceWorkspace() {
   const { state, dispatch } = useProject();
   const navigate = useNavigate();
   const { generateFull, generationProgress, canGenerate, generateDisabledReason } = useAutoAnalysis();
+  useAutoSave(state);
   useKeyboardShortcuts();
 
   const [drawerTab, setDrawerTab] = useState<DrawerTab>('execution');
