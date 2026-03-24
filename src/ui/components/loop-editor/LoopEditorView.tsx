@@ -13,6 +13,7 @@ import {
   createInitialLoopState,
 } from '../../state/loopEditorReducer';
 import { saveLoopState, loadLoopState } from '../../persistence/loopStorage';
+import { savePreset, deletePreset, presetToLoopState, type PerformancePreset } from '../../persistence/presetStorage';
 import { convertLoopToPerformanceLanes } from '../../state/loopToLanes';
 import { type LoopLane } from '../../../types/loopEditor';
 import { stepDuration, totalSteps } from '../../../types/loopEditor';
@@ -155,6 +156,23 @@ export function LoopEditorView() {
     });
   }, [loopState, projectState.name, projectState.laneGroups.length, projectDispatch]);
 
+  // Preset save/load/delete
+  const handleSavePreset = useCallback(() => {
+    if (loopState.events.size === 0) return;
+    const name = window.prompt('Preset name:', `Pattern ${new Date().toLocaleDateString()}`);
+    if (!name) return;
+    savePreset(name, loopState);
+  }, [loopState]);
+
+  const handleLoadPreset = useCallback((preset: PerformancePreset) => {
+    dispatch({ type: 'LOAD_LOOP_STATE', payload: presetToLoopState(preset) });
+    setActiveEventIndex(null);
+  }, []);
+
+  const handleDeletePreset = useCallback((presetId: string) => {
+    deletePreset(presetId);
+  }, []);
+
   // Generate pattern from preset
   const handleGeneratePattern = useCallback((recipe: PatternRecipe) => {
     dispatch({ type: 'GENERATE_PATTERN', payload: { recipe } });
@@ -203,6 +221,9 @@ export function LoopEditorView() {
         onRandomizePattern={handleRandomizePattern}
         onOpenRecipeEditor={handleOpenRecipeEditor}
         hasPatternResult={!!activeResult}
+        onSavePreset={handleSavePreset}
+        onLoadPreset={handleLoadPreset}
+        onDeletePreset={handleDeletePreset}
       />
 
       {/* Event stepper (visible when any result exists) */}
