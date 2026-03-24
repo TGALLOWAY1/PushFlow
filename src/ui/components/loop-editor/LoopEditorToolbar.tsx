@@ -9,6 +9,7 @@ import { type LoopConfig, type LoopSubdivision } from '../../../types/loopEditor
 import { type PatternRecipe } from '../../../types/patternRecipe';
 import { type LoopEditorAction } from '../../state/loopEditorReducer';
 import { PatternSelector } from './PatternSelector';
+import { type PerformancePreset } from '../../persistence/presetStorage';
 
 interface LoopEditorToolbarProps {
   config: LoopConfig;
@@ -22,6 +23,9 @@ interface LoopEditorToolbarProps {
   onRandomizePattern: (seed: number) => void;
   onOpenRecipeEditor: (recipe?: PatternRecipe) => void;
   hasPatternResult: boolean;
+  onSavePreset: () => void;
+  onLoadPreset: (preset: PerformancePreset) => void;
+  onDeletePreset: (presetId: string) => void;
 }
 
 const SUBDIVISIONS: LoopSubdivision[] = ['1/8', '1/4', '1/2', '1/1'];
@@ -38,6 +42,9 @@ export function LoopEditorToolbar({
   onRandomizePattern,
   onOpenRecipeEditor,
   hasPatternResult,
+  onSavePreset,
+  onLoadPreset,
+  onDeletePreset,
 }: LoopEditorToolbarProps) {
   return (
     <div className="flex items-center gap-3 px-3 py-2 rounded-lg bg-gray-800/30 border border-gray-700 flex-wrap">
@@ -137,7 +144,19 @@ export function LoopEditorToolbar({
         onRandomize={onRandomizePattern}
         onCustomize={onOpenRecipeEditor}
         hasPatternResult={hasPatternResult}
+        onLoadPreset={onLoadPreset}
+        onDeletePreset={onDeletePreset}
       />
+
+      {/* Save Preset */}
+      <button
+        className="px-2 py-1 text-xs rounded bg-gray-700 text-gray-300 hover:bg-gray-600 transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+        onClick={onSavePreset}
+        disabled={eventCount === 0}
+        title={eventCount === 0 ? 'Add events first' : 'Save current pattern as a preset'}
+      >
+        Save Preset
+      </button>
 
       {/* Commit to Project */}
       <button
