@@ -166,6 +166,13 @@ export function EditorToolbar({
               Diagnostics
             </button>
           )}
+          <button
+            className={`px-2 py-1 text-xs rounded transition-colors ${state.autoAnalysisEnabled ? 'bg-gray-700 text-gray-200' : 'text-gray-500 hover:bg-gray-800'}`}
+            onClick={() => dispatch({ type: 'TOGGLE_AUTO_ANALYSIS' })}
+            title="Automatically re-analyze when layout changes"
+          >
+            Auto-Analysis
+          </button>
         </div>
       )}
 

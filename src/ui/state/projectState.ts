@@ -87,6 +87,7 @@ export interface ProjectState {
   isProcessing: boolean;
   error: string | null;
   analysisStale: boolean;
+  autoAnalysisEnabled: boolean;
 
   // Transport
   currentTime: number;
@@ -160,6 +161,7 @@ export type ProjectAction =
   | { type: 'SET_COMPARE_CANDIDATE'; payload: string | null }
   | { type: 'SET_PROCESSING'; payload: boolean }
   | { type: 'SET_ERROR'; payload: string | null }
+  | { type: 'TOGGLE_AUTO_ANALYSIS' }
 
   // Transport
   | { type: 'SET_CURRENT_TIME'; payload: number }
@@ -180,6 +182,7 @@ const EPHEMERAL_ACTIONS = new Set<ProjectAction['type']>([
   'SET_ANALYSIS_RESULT',
   'SET_CANDIDATES',
   'SELECT_CANDIDATE',
+  'TOGGLE_AUTO_ANALYSIS',
   'TOGGLE_LANE_GROUP_COLLAPSE',
   'SET_CURRENT_TIME',
   'TICK_TIME',
@@ -229,6 +232,7 @@ export function projectReducer(state: ProjectState, action: ProjectAction): Proj
         isProcessing: false,
         error: null,
         analysisStale: true,
+        autoAnalysisEnabled: action.payload.autoAnalysisEnabled ?? false,
         currentTime: 0,
         isPlaying: false,
       };
@@ -396,6 +400,9 @@ export function projectReducer(state: ProjectState, action: ProjectAction): Proj
     case 'SET_ERROR':
       return { ...state, error: action.payload, isProcessing: false };
 
+    case 'TOGGLE_AUTO_ANALYSIS':
+      return { ...state, autoAnalysisEnabled: !state.autoAnalysisEnabled };
+
     // -- Transport --
     case 'SET_CURRENT_TIME':
       return { ...state, currentTime: action.payload };
@@ -459,6 +466,7 @@ export function createEmptyProjectState(): ProjectState {
     isProcessing: false,
     error: null,
     analysisStale: false,
+    autoAnalysisEnabled: false,
     currentTime: 0,
     isPlaying: false,
   };
