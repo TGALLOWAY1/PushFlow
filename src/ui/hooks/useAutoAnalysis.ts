@@ -129,6 +129,7 @@ export function useAutoAnalysis() {
 
   // Auto re-analysis: fast single-candidate when stale
   useEffect(() => {
+    if (!state.autoAnalysisEnabled) return;
     if (!state.analysisStale) return;
     // Skip auto-analysis while manual generation (generateFull) is running —
     // its results will arrive soon and override anything auto-analysis produces.
@@ -194,7 +195,7 @@ export function useAutoAnalysis() {
       if (debounceRef.current) clearTimeout(debounceRef.current);
       abortRef.current = true;
     };
-  }, [state.analysisStale, state.isProcessing, state.soundStreams, state.layouts, state.activeLayoutId, state.instrumentConfig, state.sections, state.engineConfig, dispatch]);
+  }, [state.autoAnalysisEnabled, state.analysisStale, state.isProcessing, state.soundStreams, state.layouts, state.activeLayoutId, state.instrumentConfig, state.sections, state.engineConfig, dispatch]);
 
   // Full multi-candidate generation (manual trigger)
   const generateFull = useCallback(async (mode: GenerationMode = 'fast') => {
